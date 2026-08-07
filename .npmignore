@@ -1,0 +1,7 @@
+.github/
+coverage/
+scripts/
+test/
+*.log
+focusrite-client-key.json
+focusrite-gui-config.json

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Focusrite Control</title>
+  <style>
+    :root { color-scheme:dark; --red:#ed3347; --bg:#0d0f12; --panel:#181b20; --line:#2b2f37; --soft:#252932; --text:#f4f6f8; --muted:#9ca3ad; --green:#48d68a; --amber:#f2b84b }
+    * { box-sizing:border-box } body { margin:0; font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text) }
+    header { position:sticky; top:0; z-index:4; display:flex; justify-content:space-between; align-items:center; padding:17px 26px; background:#111318ee; border-bottom:1px solid var(--line); backdrop-filter:blur(18px) }
+    h1 { margin:0; font-size:20px; letter-spacing:-.02em } h2 { margin:0 0 14px; font-size:16px } h3 { margin:18px 0 8px; font-size:14px }
+    .status { display:flex; gap:9px; align-items:center; color:var(--muted) } .dot { width:10px; height:10px; border-radius:50%; background:#666 } .dot.ok { background:var(--green); box-shadow:0 0 12px #48d68a88 } .dot.wait { background:var(--amber) }
+    main { max-width:1120px; margin:auto; padding:25px; display:grid; gap:19px } .panel { padding:20px; background:var(--panel); border:1px solid var(--line); border-radius:15px; box-shadow:0 12px 32px #0003 }
+    .toolbar { display:flex; gap:14px; flex-wrap:wrap; justify-content:space-between; align-items:center } .actions { display:flex; gap:9px; flex-wrap:wrap }
+    button { border:1px solid #3b404a; background:var(--soft); color:var(--text); border-radius:9px; padding:9px 13px; font-weight:600; cursor:pointer } button:hover { border-color:#69717e } button.primary { background:var(--red); border-color:var(--red) } button:disabled,input:disabled { opacity:.45; cursor:not-allowed }
+    .message { min-height:21px; color:var(--muted) } .message.good { color:var(--green) } .message.bad { color:#ff7580 }
+    .channels { display:grid; grid-template-columns:repeat(auto-fit,minmax(285px,1fr)); gap:17px } .channel { padding:18px; background:#14161a; border:1px solid var(--line); border-radius:13px }
+    .switchrow { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid #252932 } .switch { width:48px; height:27px; border:0; border-radius:20px; padding:3px; background:#3b4049; transition:.18s } .switch::after { content:""; display:block; width:21px; height:21px; border-radius:50%; background:white; transition:.18s } .switch.on { background:var(--red) } .switch.on::after { transform:translateX(21px) }
+    .gain { margin-top:15px } .gainhead { display:flex; justify-content:space-between; margin-bottom:7px } .gainhead strong { min-width:76px; text-align:right; transition:color .12s } .gainhead strong.preview { color:var(--red) } input[type=range] { width:100%; accent-color:var(--red) }
+    .pair { display:none } .pair.show { display:block } .drop { padding:20px; margin-top:13px; text-align:center; border:1px dashed #555c68; border-radius:11px; background:#111317 }
+    details { color:var(--muted) } summary { cursor:pointer; color:var(--text); font-weight:600 } .fields { display:grid; grid-template-columns:1fr 1fr; gap:11px; margin-top:15px } label small { display:block; margin-bottom:5px } input[type=text],input[type=number] { width:100%; padding:9px; border:1px solid #373c46; border-radius:8px; background:#101216; color:white }
+    .developer { margin-top:17px; padding-top:14px; border-top:1px solid var(--line) } .developer dl { display:grid; grid-template-columns:150px 1fr; gap:7px 12px; margin:0 } dt { color:#cdd2d9 } dd { margin:0; word-break:break-all; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace } .note { font-size:13px; color:var(--muted) }
+    footer { padding:0 25px 28px; max-width:1120px; margin:auto; color:#777f8b; font-size:12px }
+    @media(max-width:650px){header{padding:14px} main{padding:14px}.fields{grid-template-columns:1fr}.developer dl{grid-template-columns:1fr}.developer dd{margin-bottom:6px}}
+  </style>
+</head>
+<body>
+  <header><h1 id="deviceName">Focusrite interface</h1><div class="status"><span id="dot" class="dot wait"></span><span id="statusText">Checking connection…</span></div></header>
+  <main>
+    <section class="panel toolbar"><div><strong>Control dashboard</strong><div id="message" class="message">Loading current settings…</div></div><div class="actions"><button id="refresh">Refresh</button><button id="pairButton">Pair this computer</button></div></section>
+    <section id="pairPanel" class="panel pair"><h2>Pair with Focusrite Control 2</h2><p id="pairMessage">Start pairing, approve the request in Focusrite Control 2, then upload the QR screenshot.</p><button id="pairStart" class="primary">Start pairing</button><div class="drop"><input id="qrFile" type="file" accept="image/png"><p>PNG screenshot containing the complete QR code</p></div></section>
+    <section class="channels">
+      <article class="channel"><h2>Monitor</h2><div class="switchrow"><span>Dim</span><button class="switch" data-control="dim" aria-label="Toggle monitor dim"></button></div><div class="switchrow"><span>Mute</span><button class="switch" data-control="monitor-mute" aria-label="Toggle monitor mute"></button></div><div class="gain"><div class="gainhead"><span>Level</span><strong data-value="monitor-gain">— dB</strong></div><input data-gain="monitor-gain" type="range" min="-80" max="6" step="0.5"></div></article>
+      <article class="channel"><h2>Input 1</h2><div class="switchrow"><span>Air</span><button class="switch" data-control="input1-air"></button></div><div class="switchrow"><span>48V phantom</span><button class="switch" data-control="input1-phantom"></button></div><div class="switchrow"><span>Instrument</span><button class="switch" data-control="input1-instrument"></button></div><div class="gain"><div class="gainhead"><span>Gain</span><strong data-value="input1-gain">— dB</strong></div><input data-gain="input1-gain" type="range" min="0" max="69" step="0.5"></div></article>
+      <article class="channel"><h2>Input 2</h2><div class="switchrow"><span>Air</span><button class="switch" data-control="input2-air"></button></div><div class="switchrow"><span>48V phantom</span><button class="switch" data-control="input2-phantom"></button></div><div class="switchrow"><span>Instrument</span><button class="switch" data-control="input2-instrument"></button></div><div class="gain"><div class="gainhead"><span>Gain</span><strong data-value="input2-gain">— dB</strong></div><input data-gain="input2-gain" type="range" min="0" max="69" step="0.5"></div></article>
+    </section>
+    <section class="panel"><details><summary>Connection settings and developer information</summary><p class="note">Ports are rediscovered from the local Focusrite Control 2 process. The public keys identify both ends of the authenticated connection; the client private key never leaves this Mac.</p><div class="fields"><label><small>Secure control port</small><input id="securePort" type="number"></label><label><small>Onboarding port</small><input id="onboardingPort" type="number"></label><label style="grid-column:1/-1"><small>Focusrite Control 2 server public key</small><input id="serverKey" type="text"></label><label style="grid-column:1/-1"><small>Client name shown during pairing</small><input id="clientName" type="text"></label></div><p><button id="saveConfig">Save connection settings</button></p><div class="developer"><h3>Live connection</h3><dl id="developerInfo"><dt>Protocol</dt><dd>AES70/OCP.1 over authenticated WebSocket</dd></dl></div></details></section>
+  </main>
+  <footer>Unofficial and unaffiliated with Focusrite. Tested only with Focusrite Control 2 v1.1081.0.0 and Scarlett 16i16 4th Gen firmware v3.0.2778.0.</footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>

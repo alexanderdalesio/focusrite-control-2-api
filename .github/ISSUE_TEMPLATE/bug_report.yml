@@ -1,0 +1,35 @@
+name: Bug report
+description: Report reproducible incorrect behavior
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include private keys, QR payloads, or device serial numbers.
+  - type: input
+    id: fc2
+    attributes:
+      label: Focusrite Control 2 version
+      placeholder: 1.1081.0.0
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and firmware
+      placeholder: Scarlett 16i16 4th Gen, firmware 3.0.2778.0
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include the command, expected result, actual result, and sanitized diagnostic output.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
