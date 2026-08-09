@@ -2,7 +2,9 @@
 
 ## 0.2.0 - 2026-08-08
 
-- Added a direct USB backend using the Focusrite Control Protocol and the device-provided control map.
+Dual-communication release: one CLI, HTTP API, and dashboard can control a Scarlett either directly over USB/FCP or through an authenticated Focusrite Control 2 session.
+
+- Established the dual-communication architecture with direct USB/FCP and authenticated Focusrite Control 2 transports behind one control interface.
 - Added mapped settings on the tested Scarlett, including talkback, Auto Gain targets, mono modes, metering, and ADAT expansion.
 - Added verified routing control across all three sample-rate tables.
 - Added verified 12×36 internal mixer reads and writes.
@@ -18,7 +20,7 @@
 - Arranged the two main Monitor dials on one row with their matching toggles directly below.
 - Grouped CLI help by purpose, aligned variable-length output, replaced internal diagnostic identifiers with readable labels, and strengthened support-log redaction.
 - Added a backend factory and persistent direct USB sessions for efficient batches.
-- Added backend synchronization and automatic managed-service restarts so the GUI cannot remain on a stale FC2-only process after switching to USB.
+- Added communication-method synchronization and automatic managed-service restarts so the GUI cannot remain attached to a stale single-transport process after switching methods.
 - Routed explicit `focusrite usb` commands through the persistent local API when it owns the USB interface, preventing competing libusb claims.
 - Removed unsafe LED mutation probes after hardware testing showed that the acknowledged map buffers did not change visible LEDs and their notification events could temporarily re-enumerate the USB device.
 - Added read-only ESP32 front-panel firmware, IPC, encryption, reset, and state diagnostics to `focusrite usb led info`.

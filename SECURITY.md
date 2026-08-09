@@ -8,6 +8,10 @@ The X25519 private identity under `~/Library/Application Support/focusrite-contr
 
 The API binds to `127.0.0.1` and rejects non-local browser origins. Do not proxy or expose port 41780 to another machine or the public internet. State-changing GET endpoints exist only for local clients with limited HTTP support.
 
+## Communication methods
+
+The application can communicate through a paired Focusrite Control 2 service or directly with the Scarlett USB control interface. Pairing credentials protect the FC2 path; operating-system device permissions protect direct USB access. Treat either method as privileged control of connected audio hardware.
+
 ## Direct hardware access
 
 Direct USB mode can change monitor levels, phantom power, routing, mixer coefficients, and front-panel state. Run it only as a trusted local user, keep API access local, and validate automation values before applying them.

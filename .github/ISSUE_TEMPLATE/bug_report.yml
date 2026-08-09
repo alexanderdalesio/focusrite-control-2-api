@@ -7,12 +7,18 @@ body:
     attributes:
       value: Do not include private keys, QR payloads, or device serial numbers.
   - type: input
-    id: fc2
+    id: method
     attributes:
-      label: Focusrite Control 2 version
-      placeholder: 1.1081.0.0
+      label: Communication method
+      description: State whether the problem occurs with direct USB or Focusrite Control 2.
+      placeholder: Direct USB
     validations:
       required: true
+  - type: input
+    id: fc2
+    attributes:
+      label: Focusrite Control 2 version, if used
+      placeholder: 1.1081.0.0
   - type: input
     id: device
     attributes:

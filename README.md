@@ -4,7 +4,7 @@
 [![Node.js 20+](https://img.shields.io/badge/Node.js-20%2B-43853d)](https://nodejs.org/)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-An unofficial local CLI, JSON API, and browser dashboard for Focusrite interfaces. Version 0.2 combines direct USB control and authenticated Focusrite Control 2 communication behind the same commands and interface.
+An unofficial local controller for Focusrite interfaces with a CLI, JSON API, and browser dashboard. It offers two communication methods behind one consistent control surface: direct USB/FCP access to the interface, or authenticated communication through Focusrite Control 2.
 
 > [!IMPORTANT]
 > Hardware testing is limited to **Focusrite Control 2 v1.1081.0.0** and a **Scarlett 16i16 4th Gen running firmware v3.0.2778.0 on macOS**. Other models, firmware, and operating systems are unverified.
@@ -21,25 +21,25 @@ This independent project is **not affiliated with or endorsed by Focusrite Audio
 - 64-slot signal-meter reads with device-provided channel names
 - Persistent connections and multi-control batches through the local API service
 - Human-readable CLI output, machine-safe `--json`, presets, diagnostics, and a dynamic browser dashboard
-- Existing paired Focusrite Control 2 backend for setups where FC2 must remain open
+- Authenticated Focusrite Control 2 communication for workflows that need the official application open
 
 Firmware update, flash erase/write, reboot, DFU, and factory-test commands are deliberately not implemented.
 
-## Two communication methods
+## Choose a communication method
 
-| Backend | Communication path | Focusrite Control 2 | Available control |
+| Method | Communication path | Focusrite Control 2 | Control surface |
 | --- | --- | --- | --- |
 | `fc2` | Authenticated AES70/WebSocket controller | Must be open and paired | Core preamp and monitor controls exposed by FC2 |
 | `usb` | Focusrite Control Protocol over the vendor USB interface | Must be closed | Expanded device-map controls plus routing, mixer, meters, and diagnostics on the tested Scarlett |
 
-Both backends use the same ordinary `focusrite get`, `set`, `toggle`, `batch`, HTTP API, and dashboard controls. Switch safely at runtime with:
+Both methods are first-class parts of the application. They use the same ordinary `focusrite get`, `set`, `toggle`, and `batch` commands, along with the same HTTP API and dashboard. Select either method at runtime:
 
 ```bash
 focusrite backend fc2
 focusrite backend usb
 ```
 
-Switching closes the previous persistent transport before opening the next one. Direct USB offers the wider control surface on the tested 16i16, while FC2 is the appropriate choice when the official application needs to remain open.
+Switching closes the active transport before opening the selected one. Direct USB offers the wider control surface on the tested 16i16. The FC2 method is designed for coexistence with the official application and exposes the controls published by FC2.
 
 ## Platform support
 
@@ -58,9 +58,9 @@ npm install
 npm link
 ```
 
-### Direct USB mode
+### Direct USB communication
 
-Quit Focusrite Control 2 first—the direct backend needs exclusive access to the vendor control interface—then select it:
+Quit Focusrite Control 2 first—direct USB needs exclusive access to the vendor control interface—then select it:
 
 ```bash
 focusrite backend usb
@@ -75,9 +75,9 @@ The tested Scarlett product ID is the default. Another product can be selected e
 focusrite config set usbProductId 0x821b
 ```
 
-### Focusrite Control 2 mode
+### Focusrite Control 2 communication
 
-Keep FC2 running, select the backend, configure the public key advertised over Bonjour, and pair:
+Keep FC2 running, select it as the communication method, configure the public key advertised over Bonjour, and pair this controller:
 
 ```bash
 focusrite backend fc2
@@ -91,7 +91,7 @@ Approve the request in Focusrite Control 2, then provide a PNG screenshot of its
 
 ## Command line
 
-Ordinary commands use the configured backend:
+Ordinary commands use the selected communication method:
 
 ```bash
 focusrite list
@@ -107,12 +107,12 @@ focusrite gui
 Useful connection and diagnostic commands:
 
 ```bash
-focusrite backend fc2          # use the paired FC2 connection
-focusrite backend usb          # use direct USB/FCP
+focusrite backend fc2          # communicate through the paired FC2 service
+focusrite backend usb          # communicate directly over USB/FCP
 focusrite device               # connected device and firmware
 focusrite doctor               # readable connection checks
 focusrite reconnect            # rebuild the selected transport
-focusrite list                 # controls available on this backend
+focusrite list                 # controls available through the selected method
 ```
 
 Direct USB tools expose routing, mixer, meters, and device-map diagnostics:
@@ -145,7 +145,7 @@ curl -X POST http://127.0.0.1:41780/api/v1/batch \
   -d '{"operations":[{"control":"dim","value":true},{"control":"monitor-gain","value":-30}]}'
 ```
 
-The service retains one USB or encrypted FC2 session. A batch does not reopen the connection for each control. See the [HTTP API reference](docs/API.md).
+The service keeps the selected USB or encrypted FC2 session open. Batch operations reuse that session instead of reconnecting for every control. See the [HTTP API reference](docs/API.md).
 
 ## 🧰 Troubleshooting
 

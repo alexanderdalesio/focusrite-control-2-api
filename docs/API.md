@@ -1,6 +1,8 @@
 # HTTP API
 
-The server listens on `http://127.0.0.1:41780` by default. Responses contain `"ok": true` on success or `"ok": false` and an `error` message on failure.
+The HTTP API presents one control model over both supported communication methods: authenticated Focusrite Control 2 and direct USB/FCP. The server listens on `http://127.0.0.1:41780` by default. Responses contain `"ok": true` on success or `"ok": false` and an `error` message on failure.
+
+The selected method is persistent and shared by the CLI and dashboard. Ordinary control endpoints work with either method; `/api/v1/usb/*` endpoints expose capabilities that require direct USB.
 
 ## Status and controls
 
@@ -8,10 +10,10 @@ The server listens on `http://127.0.0.1:41780` by default. Responses contain `"o
 - `GET /api/v1/device` — dynamic device identity and transport details
 - `GET /api/v1/controls` — control types, labels, aliases, ranges, and enum values
 - `GET /api/v1/state` — every ordinary control and its current value
-- `POST /api/v1/reconnect` — close and recreate the persistent backend session
-- `POST /api/v1/backend` — close the current transport, persist `fc2` or `usb`, and connect through the selected backend
+- `POST /api/v1/reconnect` — close and recreate the persistent communication session
+- `POST /api/v1/backend` — close the active transport, persist `fc2` or `usb`, and connect through the selected method
 
-Switch backend:
+Select a communication method:
 
 ```http
 POST /api/v1/backend
@@ -20,9 +22,9 @@ Content-Type: application/json
 { "backend": "fc2" }
 ```
 
-The response reports the selected backend, connection state, detected device, advertised FC2 ports when applicable, and a human-readable connection error when the selection was saved but could not connect immediately.
+The response reports the selected method, connection state, detected device, advertised FC2 ports when applicable, and a human-readable connection error when the selection was saved but could not connect immediately.
 
-The direct backend builds its control list from the device map. Do not assume that every model returns the same names.
+Direct USB builds its control list from the device map. Do not assume that every model returns the same names. FC2 control availability is determined by the objects published by the paired FC2 service.
 
 ## Individual controls
 

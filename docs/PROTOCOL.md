@@ -10,14 +10,14 @@ Real-hardware validation currently covers:
 
 The hardware-free suite runs on macOS, Linux, and Windows. Treat direct control on other devices and platforms as experimental until it is verified.
 
-## Backends
+## Communication model
 
-The project has one public control interface and two transports:
+The application is a dual-transport Scarlett controller. It has one public control interface and two communication methods:
 
 - `usb` communicates directly with the Scarlett's vendor interface using Focusrite Control Protocol.
-- `fc2` acts as an approved remote controller for the local Focusrite Control 2 service using AES70/OCP.1.
+- `fc2` communicates as an approved remote controller through the local Focusrite Control 2 service using AES70/OCP.1.
 
-The API server retains the selected client. Commands are serialized on that persistent connection, so a batch does not claim the USB interface or authenticate a WebSocket for every value.
+The API server retains the selected transport. Commands are serialized on that persistent connection, so a batch does not claim the USB interface or authenticate a WebSocket for every value.
 
 ## Direct USB transport
 
@@ -62,4 +62,4 @@ After the WebSocket upgrade, both peers establish XChaCha20-Poly1305 secretstrea
 
 Encrypted records use a two-byte big-endian length followed by secretstream ciphertext. The first outbound payload also contains the secretstream header. AES70 plaintext is split at 1283 bytes per record.
 
-The FC2 backend discards its session after a transport error. The next operation reconnects with the approved identity. Toggles are resolved to explicit values before a retry, preventing an ambiguous double toggle.
+The FC2 transport discards its session after a transport error. The next operation reconnects with the approved identity. Toggles are resolved to explicit values before a retry, preventing an ambiguous double toggle.

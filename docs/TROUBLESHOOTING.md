@@ -8,6 +8,14 @@ focusrite doctor
 
 Add `--json` when attaching sanitized output to an issue.
 
+Confirm the selected communication method with:
+
+```bash
+focusrite backend
+```
+
+Use `focusrite backend usb` for direct device communication or `focusrite backend fc2` to communicate through the paired Focusrite Control 2 service.
+
 ## Direct USB cannot open the device
 
 Quit Focusrite Control 2 completely, then retry:
@@ -17,9 +25,9 @@ focusrite backend usb
 focusrite usb doctor
 ```
 
-Direct mode needs exclusive access to the vendor control interface. It does not claim the audio streaming interfaces.
+Direct USB needs exclusive access to the vendor control interface. It does not claim the audio streaming interfaces.
 
-When the managed API is running in USB mode, use the normal CLI commands or `focusrite usb ...`; both reuse that service's persistent USB session. Do not launch a second standalone copy of the API against the same device.
+When direct USB is selected, normal CLI commands and `focusrite usb ...` both reuse the service's persistent USB session. Do not launch a second standalone copy of the API against the same device.
 
 On Linux, check USB permissions and whether a kernel driver owns the vendor interface. A narrowly scoped udev rule may be needed for vendor ID `1235`; do not run the API permanently as root. On Windows, another Focusrite process or the installed driver stack may own the interface. These platforms have not yet received real-hardware validation.
 
@@ -69,7 +77,7 @@ Quote names containing spaces. Fixed mixer-input routes cannot be changed and ar
 
 ## Focusrite Control 2 was restarted
 
-The FC2 backend normally rediscovers its ports and reconnects automatically:
+The FC2 communication method normally rediscovers its ports and reconnects automatically:
 
 ```bash
 focusrite backend fc2
@@ -108,7 +116,7 @@ focusrite service restart
 focusrite logs 200
 ```
 
-The CLI synchronizes backend changes with the running API and restarts an outdated managed service on macOS. If a manually started copy is still serving an older build, stop that process and run:
+The CLI synchronizes communication-method changes with the running API and restarts an outdated managed service on macOS. If a manually started copy is still serving a different build, stop that process and run:
 
 ```bash
 focusrite service restart

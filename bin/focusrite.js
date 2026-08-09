@@ -25,6 +25,9 @@ const args = process.argv.slice(2).filter((argument) => argument !== '--json');
 function help() {
   console.log(`${style.heading('Focusrite Control API')}
 
+Control a Scarlett through direct USB/FCP or a paired Focusrite Control 2 session.
+Ordinary commands use the communication method selected with ${style.command('focusrite backend')}.
+
 ${style.heading('Control')}
   ${style.command('focusrite list')}
   ${style.command('focusrite status')} [--json]
@@ -37,7 +40,7 @@ ${style.heading('Control')}
   ${style.command('focusrite url')} CONTROL ACTION
 
 ${style.heading('Connection')}
-  ${style.command('focusrite backend')} fc2|usb [--json]
+  ${style.command('focusrite backend')} [fc2|usb] [--json]
   ${style.command('focusrite gui')}
   ${style.command('focusrite pair')}
   ${style.command('focusrite doctor')}
@@ -428,7 +431,24 @@ async function main() {
   if (command === 'usb') { await runUsb(first, [second, ...rest].filter((value) => value !== undefined)); return; }
 
   if (command === 'backend') {
-    if (!['fc2', 'usb'].includes(first)) throw new Error('Usage: focusrite backend fc2|usb');
+    if (!first) {
+      const health = await apiHealth();
+      const config = await loadConfig();
+      const result = {
+        ok: true,
+        backend: health?.backend ?? config.backend,
+        serviceRunning: Boolean(health),
+        connected: Boolean(health?.connected),
+      };
+      if (jsonOutput) console.log(JSON.stringify(result));
+      else printRows([
+        ['Communication', result.backend === 'usb' ? 'Direct USB/FCP' : 'Focusrite Control 2'],
+        ['API service', result.serviceRunning ? 'Running' : 'Not running'],
+        ['Control connection', result.connected ? 'Connected' : 'Not connected'],
+      ]);
+      return;
+    }
+    if (!['fc2', 'usb'].includes(first)) throw new Error('Usage: focusrite backend [fc2|usb]');
     let result;
     const health = await apiHealth();
     if (health) {

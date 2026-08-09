@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,4 +32,22 @@ test('JSON errors are valid machine-readable objects', async () => {
       return true;
     },
   );
+});
+
+test('backend without an argument reports the selected communication method', async (t) => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), 'focusrite-cli-test-'));
+  t.after(() => rm(dataDirectory, { recursive: true, force: true }));
+  const { stdout } = await run(process.execPath, [cli, 'backend', '--json'], {
+    env: {
+      ...process.env,
+      FOCUSRITE_API_URL: 'http://127.0.0.1:1',
+      FOCUSRITE_DATA_DIR: dataDirectory,
+    },
+  });
+  assert.deepEqual(JSON.parse(stdout), {
+    ok: true,
+    backend: 'fc2',
+    serviceRunning: false,
+    connected: false,
+  });
 });

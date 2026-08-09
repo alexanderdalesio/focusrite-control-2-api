@@ -1,7 +1,7 @@
 {
   "name": "focusrite-control-2-api",
   "version": "0.2.0",
-  "description": "Unofficial direct USB and Focusrite Control 2 API, CLI, and web controller",
+  "description": "Unofficial dual-transport Scarlett controller using direct USB or Focusrite Control 2",
   "author": "alexanderdalesio",
   "private": true,
   "type": "module",
