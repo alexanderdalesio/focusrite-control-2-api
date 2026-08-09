@@ -131,7 +131,12 @@ export class FocusriteSecureConnection extends WebSocketConnectionBase {
       const webSocket = new WebSocket(url, { origin: 'capacitor://localhost', perMessageDeflate: true });
       const onError = (error) => reject(error);
       webSocket.once('error', onError);
-      webSocket.once('unexpected-response', (_request, response) => reject(new Error(`Secure WebSocket upgrade returned HTTP ${response.statusCode}.`)));
+      webSocket.once('unexpected-response', (_request, response) => {
+        const message = response.statusCode === 404
+          ? 'Focusrite Control 2 does not recognize this client identity. Pair this computer again with "focusrite pair" or the dashboard Pair button.'
+          : `Secure WebSocket upgrade returned HTTP ${response.statusCode}.`;
+        reject(new Error(message));
+      });
       webSocket.once('open', () => {
         webSocket.off('error', onError);
         resolve(new this(webSocket, { url }, key));

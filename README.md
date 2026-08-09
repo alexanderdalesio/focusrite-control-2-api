@@ -1,33 +1,55 @@
-# 🎛️ Focusrite Control 2 API
+# 🎛️ Focusrite Control API
 
 [![CI](https://github.com/alexanderdalesio/focusrite-control-2-api/actions/workflows/ci.yml/badge.svg)](https://github.com/alexanderdalesio/focusrite-control-2-api/actions/workflows/ci.yml)
 [![Node.js 20+](https://img.shields.io/badge/Node.js-20%2B-43853d)](https://nodejs.org/)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-An unofficial local controller for Focusrite Control 2. Interact with supported controls through a command-line interface, JSON HTTP API, preset files, or the browser dashboard.
+An unofficial local CLI, JSON API, and browser dashboard for Focusrite interfaces. Version 0.2 combines direct USB control and authenticated Focusrite Control 2 communication behind the same commands and interface.
 
 > [!IMPORTANT]
-> Tested only with **Focusrite Control 2 v1.1081.0.0** and a **Scarlett 16i16 4th Gen running firmware v3.0.2778.0**. Focusrite does not publish this protocol as a supported API, so other software, firmware, and devices may use different AES70 object mappings or authentication behavior.
+> Hardware testing is limited to **Focusrite Control 2 v1.1081.0.0** and a **Scarlett 16i16 4th Gen running firmware v3.0.2778.0 on macOS**. Other models, firmware, and operating systems are unverified.
 
 This independent project is **not affiliated with or endorsed by Focusrite Audio Engineering Limited**. Focusrite and Scarlett are trademarks of their respective owner.
 
-## What it provides
+## Features
 
-- Persistent authenticated connection with automatic reconnection
-- Batched AES70/OCP.1 reads and writes
-- Human-readable and JSON command-line output
-- Local JSON HTTP API for scripts and integrations
-- Browser dashboard with pairing and connection diagnostics
-- Presets, health checks, logs, and redacted support bundles
-- Optional macOS login service
+- Direct Focusrite Control Protocol (FCP) access over the vendor USB interface
+- Device-map-driven controls instead of hard-coded memory offsets
+- Preamp gain, Air modes, phantom power, instrument mode, Clip Safe, Auto Gain, monitor controls, talkback, mono modes, and more
+- Complete routing-table reads and verified routing writes at all supported sample-rate modes
+- 12×36 internal mixer control with mute to +12 dB levels
+- 64-slot signal-meter reads with device-provided channel names
+- Persistent connections and multi-control batches through the local API service
+- Human-readable CLI output, machine-safe `--json`, presets, diagnostics, and a dynamic browser dashboard
+- Existing paired Focusrite Control 2 backend for setups where FC2 must remain open
+
+Firmware update, flash erase/write, reboot, DFU, and factory-test commands are deliberately not implemented.
+
+## Two communication methods
+
+| Backend | Communication path | Focusrite Control 2 | Available control |
+| --- | --- | --- | --- |
+| `fc2` | Authenticated AES70/WebSocket controller | Must be open and paired | Core preamp and monitor controls exposed by FC2 |
+| `usb` | Focusrite Control Protocol over the vendor USB interface | Must be closed | Expanded device-map controls plus routing, mixer, meters, and diagnostics on the tested Scarlett |
+
+Both backends use the same ordinary `focusrite get`, `set`, `toggle`, `batch`, HTTP API, and dashboard controls. Switch safely at runtime with:
+
+```bash
+focusrite backend fc2
+focusrite backend usb
+```
+
+Switching closes the previous persistent transport before opening the next one. Direct USB offers the wider control surface on the tested 16i16, while FC2 is the appropriate choice when the official application needs to remain open.
 
 ## Platform support
 
-Focusrite Control 2 is available for Windows and macOS. This client currently supports **macOS only** because its discovery, GUI launch, local paths, and service management use macOS facilities. The secure transport itself is not inherently macOS-specific, but Windows support has not been implemented or tested.
+The direct backend uses libusb and is designed for macOS, Linux, and Windows. CI runs the hardware-free test suite on all three, but **only macOS has been tested with real hardware**. Linux permissions or an attached kernel driver and Windows driver ownership may require platform-specific setup.
 
-Requirements: macOS, Node.js 20 or newer, Focusrite Control 2 running locally, and a connected compatible interface.
+The optional `focusrite service` login-service command is macOS-only. On Linux or Windows, run `focusrite api` with your normal process manager. The dashboard launcher itself is cross-platform.
 
-## 🚀 Setup
+Requirements: Node.js 20 or newer and a supported Focusrite USB interface.
+
+## 🚀 Install
 
 ```bash
 git clone https://github.com/alexanderdalesio/focusrite-control-2-api.git
@@ -36,43 +58,84 @@ npm install
 npm link
 ```
 
-Find the server public key advertised by Focusrite Control 2:
+### Direct USB mode
+
+Quit Focusrite Control 2 first—the direct backend needs exclusive access to the vendor control interface—then select it:
 
 ```bash
+focusrite backend usb
+focusrite doctor
+focusrite device
+focusrite gui
+```
+
+The tested Scarlett product ID is the default. Another product can be selected explicitly:
+
+```bash
+focusrite config set usbProductId 0x821b
+```
+
+### Focusrite Control 2 mode
+
+Keep FC2 running, select the backend, configure the public key advertised over Bonjour, and pair:
+
+```bash
+focusrite backend fc2
 dns-sd -B _ocaws._tcp local.
 dns-sd -L INSTANCE_NAME _ocaws._tcp local.
 focusrite config set serverPublicKey 64_CHARACTER_PUBLIC_KEY
-```
-
-Pair, then optionally install the background API service:
-
-```bash
 focusrite pair
-focusrite service install
 ```
 
-During pairing, approve the request in Focusrite Control 2 and provide a PNG screenshot of its QR code when prompted.
+Approve the request in Focusrite Control 2, then provide a PNG screenshot of its QR code when prompted.
 
-## Ways to interact
+## Command line
 
-### Command line
+Ordinary commands use the configured backend:
 
 ```bash
 focusrite list
 focusrite status
-focusrite device
 focusrite get dim
 focusrite toggle dim
 focusrite set monitor-gain -24
-focusrite batch dim=on monitor-gain=-30 input1-air=on
+focusrite batch dim=on monitor-gain=-30 input1-air=presence-drive
+focusrite preset settings.json
 focusrite gui
 ```
 
-Append `--json` for machine-readable output. Color is used only for interactive terminal output; piping, redirection, `NO_COLOR`, and JSON output remain clean.
+Useful connection and diagnostic commands:
 
-### HTTP API
+```bash
+focusrite backend fc2          # use the paired FC2 connection
+focusrite backend usb          # use direct USB/FCP
+focusrite device               # connected device and firmware
+focusrite doctor               # readable connection checks
+focusrite reconnect            # rebuild the selected transport
+focusrite list                 # controls available on this backend
+```
 
-The service listens on `127.0.0.1:41780` by default:
+Direct USB tools expose routing, mixer, meters, and device-map diagnostics:
+
+```bash
+focusrite usb routing list
+focusrite usb routing set "Monitor 3" "USB 3"
+focusrite usb mixer get "Mixer 1"
+focusrite usb mixer set "Mixer 1" "Analogue 1" -6
+focusrite usb meters
+focusrite usb map 'air|gain|mute'
+focusrite usb led info
+```
+
+The tested 16i16 firmware exposes LED test buffers on its USB control processor, but acknowledged writes do not reach the separate ESP32 front-panel renderer. Notifying those buffers can temporarily re-enumerate the USB device. The project therefore rejects colour writes and limits `focusrite usb led info` to safe, read-only controller diagnostics.
+
+Append `--json` for machine-readable output. Human output uses aligned columns, readable diagnostic labels, and restrained terminal colors. Colors are disabled for JSON, redirection, pipes, and `NO_COLOR`.
+
+## Local API and dashboard
+
+`focusrite gui` starts the local service if needed and opens a focused hardware-control dashboard. Inputs, outputs, ranges, and device identity come from the connected interface. Numeric controls use vertically draggable rotary dials; input and output groups can be collapsed. Routing, mixer, and meter operations remain available through the CLI and HTTP API.
+
+The API binds to `127.0.0.1:41780`:
 
 ```bash
 curl http://127.0.0.1:41780/api/v1/state
@@ -82,51 +145,19 @@ curl -X POST http://127.0.0.1:41780/api/v1/batch \
   -d '{"operations":[{"control":"dim","value":true},{"control":"monitor-gain","value":-30}]}'
 ```
 
-Convenience GET routes are available for clients that cannot send POST requests:
-
-```text
-http://127.0.0.1:41780/api/v1/control/dim/toggle
-http://127.0.0.1:41780/api/v1/control/monitor-gain/-30
-```
-
-See the [HTTP API reference](docs/API.md) for every endpoint.
-
-### Browser dashboard
-
-Run `focusrite gui` to start the local service when necessary and open the dashboard. The interface discovers the connected device name, supports pairing, exposes connection details, and previews gain values while a slider is being adjusted.
-
-### Presets
-
-Create a JSON file:
-
-```json
-{
-  "dim": true,
-  "monitor-gain": -30,
-  "input1-air": true
-}
-```
-
-Apply it with `focusrite preset path/to/preset.json`. Batch and preset operations share the existing encrypted session rather than reconnecting per control.
+The service retains one USB or encrypted FC2 session. A batch does not reopen the connection for each control. See the [HTTP API reference](docs/API.md).
 
 ## 🧰 Troubleshooting
 
 ```bash
 focusrite doctor
-focusrite ports
+focusrite usb doctor
 focusrite reconnect
 focusrite logs 200
 focusrite support-bundle
-focusrite service status
 ```
 
-See [Troubleshooting](docs/TROUBLESHOOTING.md) for recovery steps. Diagnostic bundles omit private keys, public-key values, and the device serial number; review them before sharing.
-
-## 🔐 Security
-
-The API binds only to `127.0.0.1` and rejects non-local browser origins. The paired X25519 private identity is stored with mode `0600` under `~/Library/Application Support/focusrite-control-2-api/`. Never publish that identity, QR payloads, device serial numbers, or unsanitized logs.
-
-See [Security](SECURITY.md), [protocol notes](docs/PROTOCOL.md), and [contribution guidance](CONTRIBUTING.md) for details.
+See [Troubleshooting](docs/TROUBLESHOOTING.md), [protocol notes](docs/PROTOCOL.md), and [Security](SECURITY.md). Diagnostic bundles exclude private keys, public-key values, and device serial numbers; review any bundle before sharing it.
 
 ## Development
 
@@ -136,6 +167,6 @@ npm run check
 npm test
 ```
 
-Normal tests do not require hardware and never change interface settings. Hardware integration testing is intentionally manual.
+Normal tests are hardware-free and never change interface settings. Hardware integration tests remain explicit and manual.
 
 Released under the [MIT License](LICENSE).

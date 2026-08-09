@@ -2,11 +2,18 @@ import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-export const APP_DIRECTORY = process.env.FOCUSRITE_DATA_DIR || join(homedir(), 'Library', 'Application Support', 'focusrite-control-2-api');
+function platformAppDirectory() {
+  if (process.platform === 'darwin') return join(homedir(), 'Library', 'Application Support', 'focusrite-control-2-api');
+  if (process.platform === 'win32') return join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'focusrite-control-2-api');
+  return join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'focusrite-control-2-api');
+}
+
+export const APP_DIRECTORY = process.env.FOCUSRITE_DATA_DIR || platformAppDirectory();
 export const CONFIG_PATH = join(APP_DIRECTORY, 'config.json');
 export const KEY_PATH = join(APP_DIRECTORY, 'client-key.json');
 
 export const DEFAULT_CONFIG = Object.freeze({
+  backend: 'fc2',
   host: '127.0.0.1',
   securePort: 58322,
   onboardingPort: 58323,
@@ -14,6 +21,9 @@ export const DEFAULT_CONFIG = Object.freeze({
   dashboardPort: 41780,
   serverPublicKey: '',
   clientName: 'Focusrite Command API',
+  usbVendorId: 0x1235,
+  usbProductId: 0x821b,
+  usbTimeout: 5000,
 });
 
 export async function loadConfig() {
@@ -38,8 +48,13 @@ export async function saveConfig(config) {
 }
 
 export function validateConfig(config) {
-  if (!/^[0-9a-f]{64}$/i.test(config.serverPublicKey ?? '')) throw new Error('The Focusrite Control 2 server public key must be 64 hexadecimal characters.');
+  if (!['fc2', 'usb'].includes(config.backend)) throw new Error('backend must be fc2 or usb.');
+  if (config.backend === 'fc2' && !/^[0-9a-f]{64}$/i.test(config.serverPublicKey ?? '')) throw new Error('The Focusrite Control 2 server public key must be 64 hexadecimal characters.');
   for (const field of ['securePort', 'onboardingPort', 'dashboardPort']) {
     if (!Number.isInteger(Number(config[field])) || Number(config[field]) < 1 || Number(config[field]) > 65535) throw new Error(`${field} must be a valid TCP port.`);
   }
+  for (const field of ['usbVendorId', 'usbProductId']) {
+    if (!Number.isInteger(Number(config[field])) || Number(config[field]) < 0 || Number(config[field]) > 0xffff) throw new Error(`${field} must be a 16-bit USB identifier.`);
+  }
+  if (!Number.isInteger(Number(config.usbTimeout)) || Number(config.usbTimeout) < 250 || Number(config.usbTimeout) > 60000) throw new Error('usbTimeout must be between 250 and 60000 milliseconds.');
 }

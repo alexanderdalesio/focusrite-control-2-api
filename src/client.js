@@ -2,7 +2,7 @@ import { OcaBooleanActuator } from 'aes70/src/controller/ControlClasses/OcaBoole
 import { OcaGain } from 'aes70/src/controller/ControlClasses/OcaGain.js';
 import { OcaMute } from 'aes70/src/controller/ControlClasses/OcaMute.js';
 import { OcaStringSensor } from 'aes70/src/controller/ControlClasses/OcaStringSensor.js';
-import { CONTROLS, normalizeControlName, normalizeControlValue } from './controls.js';
+import { CONTROLS, normalizeControlName, normalizeControlValue, publicControlDefinitions } from './controls.js';
 import { createSecureSession, withTimeout } from './secure-transport.js';
 
 const DEVICE_FIELDS = Object.freeze({
@@ -27,6 +27,14 @@ export class FocusriteClient {
 
   get connected() {
     return Boolean(this.session && !this.session.connection.closed);
+  }
+
+  get backend() {
+    return 'fc2';
+  }
+
+  async controlDefinitions() {
+    return publicControlDefinitions();
   }
 
   async connect() {

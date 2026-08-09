@@ -1,7 +1,7 @@
 {
   "name": "focusrite-control-2-api",
-  "version": "0.1.0",
-  "description": "Unofficial local API, CLI, and web controller for Focusrite Control 2",
+  "version": "0.2.0",
+  "description": "Unofficial direct USB and Focusrite Control 2 API, CLI, and web controller",
   "author": "alexanderdalesio",
   "private": true,
   "type": "module",
@@ -27,6 +27,8 @@
   "keywords": [
     "focusrite",
     "scarlett",
+    "fcp",
+    "usb",
     "aes70",
     "automation",
     "audio-interface"
@@ -36,6 +38,7 @@
     "jsqr": "^1.4.0",
     "libsodium-wrappers": "^0.8.4",
     "pngjs": "^7.0.0",
+    "usb": "^2.17.0",
     "ws": "^8.21.2"
   },
   "license": "MIT"

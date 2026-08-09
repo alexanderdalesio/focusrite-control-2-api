@@ -9,10 +9,18 @@ permissions:
 
 jobs:
   test:
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        node-version: [20, 22]
+        include:
+          - os: macos-latest
+            node-version: 20
+          - os: macos-latest
+            node-version: 22
+          - os: ubuntu-latest
+            node-version: 20
+          - os: windows-latest
+            node-version: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

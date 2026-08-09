@@ -6,40 +6,82 @@ Start with:
 focusrite doctor
 ```
 
-The command checks Node.js, the Focusrite Control 2 process, discovered ports, server-key configuration, paired identity, background API, and a live secure device-information read.
+Add `--json` when attaching sanitized output to an issue.
 
-## Focusrite Control 2 was restarted
+## Direct USB cannot open the device
 
-The next command normally reconnects automatically. Force a clean session when needed:
+Quit Focusrite Control 2 completely, then retry:
+
+```bash
+focusrite backend usb
+focusrite usb doctor
+```
+
+Direct mode needs exclusive access to the vendor control interface. It does not claim the audio streaming interfaces.
+
+When the managed API is running in USB mode, use the normal CLI commands or `focusrite usb ...`; both reuse that service's persistent USB session. Do not launch a second standalone copy of the API against the same device.
+
+On Linux, check USB permissions and whether a kernel driver owns the vendor interface. A narrowly scoped udev rule may be needed for vendor ID `1235`; do not run the API permanently as root. On Windows, another Focusrite process or the installed driver stack may own the interface. These platforms have not yet received real-hardware validation.
+
+If the device is absent, reconnect its USB cable directly, avoid an unpowered hub, and confirm the configured product ID:
+
+```bash
+focusrite config show
+focusrite config set usbProductId 0x821b
+```
+
+## USB commands time out
+
+Close other software that may issue Focusrite control requests and reconnect:
 
 ```bash
 focusrite reconnect
+focusrite config set usbTimeout 10000
 ```
 
-If that fails, verify the current ports:
+Do not increase the timeout indefinitely. Repeated acknowledgement timeouts usually indicate interface ownership or an unsupported device/firmware combination.
+
+## LED colour control is unavailable
+
+Per-index RGB and gain-halo colour control is not supported on the tested Scarlett 16i16 4th Gen firmware. The device map contains an internal `setLED` command buffer and a maximum array-size constant, but those values do not describe user-addressable physical LEDs. Earlier builds incorrectly treated the constant as a physical LED count and could report success after the firmware merely retained the command buffer.
+
+Check the detected capability and inspect the raw map metadata with:
 
 ```bash
+focusrite usb led info
+focusrite usb map 'led|halo|colou?r|brightness'
+```
+
+The CLI refuses LED colour writes rather than reporting an unverified visual change. Hardware testing showed that both mapped LED notification paths could temporarily re-enumerate the USB control processor without changing a visible LED, so mutation probes are intentionally not shipped.
+
+`focusrite usb led info` also reports the separate ESP32 front-panel controller's firmware, IPC version, encryption mode, reset reason, and current state. These are read-only diagnostics.
+
+## Routing or mixer names are rejected
+
+Read the names reported by this device:
+
+```bash
+focusrite usb routing list
+focusrite usb mixer list
+```
+
+Quote names containing spaces. Fixed mixer-input routes cannot be changed and are identified as fixed in routing output.
+
+## Focusrite Control 2 was restarted
+
+The FC2 backend normally rediscovers its ports and reconnects automatically:
+
+```bash
+focusrite backend fc2
+focusrite reconnect
 focusrite ports
-lsof -nP -iTCP -sTCP:LISTEN | grep -i focusrite
 ```
 
-## API service is unavailable
-
-```bash
-focusrite service status
-focusrite service restart
-focusrite logs 200
-```
-
-Reinstall the login service if its repository path changed:
-
-```bash
-focusrite service install
-```
+On non-macOS platforms, automatic FC2 process/port discovery is not yet implemented; configure the advertised ports directly.
 
 ## Pairing is missing or rejected
 
-Confirm the server public key from the `_ocaws._tcp` Bonjour record, update it, and pair again:
+Confirm the current server public key, update it, and pair again:
 
 ```bash
 dns-sd -B _ocaws._tcp local.
@@ -48,11 +90,36 @@ focusrite config set serverPublicKey 64_CHARACTER_PUBLIC_KEY
 focusrite pair
 ```
 
-Approve the request in Focusrite Control 2 before submitting the QR screenshot. Keep the entire QR code visible with a small margin around it.
+Approve the request in FC2 before submitting the QR screenshot. Keep the complete QR code and a small white margin visible.
 
-## Commands use unexpected object mappings
+## API or dashboard is unavailable
 
-Stop. Do not test writes blindly on another device or firmware. The object mapping is verified only for Focusrite Control 2 v1.1081.0.0 with Scarlett 16i16 4th Gen firmware v3.0.2778.0.
+Run it in the foreground for immediate errors:
+
+```bash
+focusrite api
+```
+
+On macOS, the optional managed service provides:
+
+```bash
+focusrite service status
+focusrite service restart
+focusrite logs 200
+```
+
+The CLI synchronizes backend changes with the running API and restarts an outdated managed service on macOS. If a manually started copy is still serving an older build, stop that process and run:
+
+```bash
+focusrite service restart
+focusrite doctor
+```
+
+`doctor` performs a live state read; it does not treat cached device metadata as a working control connection.
+
+## Do not test unknown writes blindly
+
+Stop if the model, firmware, map dimensions, or ranges differ unexpectedly. Do not use raw USB tools to probe firmware, boot, DFU, or factory-test commands.
 
 ## Create a support bundle
 
@@ -60,4 +127,4 @@ Stop. Do not test writes blindly on another device or firmware. The object mappi
 focusrite support-bundle
 ```
 
-The generated JSON omits the private key, public-key values, and device serial number. Review it before attaching it to an issue.
+The generated JSON omits private keys, public-key values, and device serial numbers. Review it before sharing it.

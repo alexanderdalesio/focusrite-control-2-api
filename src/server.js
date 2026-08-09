@@ -5,15 +5,16 @@ import { readFile, writeFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FocusriteClient } from './client.js';
-import { CONTROLS, normalizeControlName, publicControlDefinitions } from './controls.js';
+import { createClient } from './backend.js';
 import { loadConfig, saveConfig, validateConfig, CONFIG_PATH, KEY_PATH } from './config.js';
 import { discoverLocalPorts } from './discovery.js';
 import { outputStyle as style } from './terminal.js';
+import { searchDeviceMap } from './usb/device-map.js';
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const htmlPath = join(projectRoot, 'public', 'index.html');
 const browserScriptPath = join(projectRoot, 'public', 'app.js');
+const packageVersion = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8')).version;
 let config = await loadConfig();
 let client = null;
 let lastError = null;
@@ -22,23 +23,63 @@ let pairing = { state: 'idle', message: 'Use Pair when this client identity has 
 let deviceInfoCache = null;
 
 async function updateDiscovery() {
+  if (config.backend === 'usb') return { running: false, ports: [], securePort: null, onboardingPort: null };
   const discovery = await discoverLocalPorts();
   let changed = false;
   if (discovery.securePort && discovery.securePort !== config.securePort) { config.securePort = discovery.securePort; changed = true; }
   if (discovery.onboardingPort && discovery.onboardingPort !== config.onboardingPort) { config.onboardingPort = discovery.onboardingPort; changed = true; }
   if (changed) {
     await saveConfig(config);
-    client?.updateConfig(config);
+    if (client?.backend === 'fc2') client.updateConfig(config);
   }
   return discovery;
 }
 
 async function getClient() {
-  await updateDiscovery();
+  if (config.backend === 'fc2') await updateDiscovery();
   validateConfig(config);
-  if (!existsSync(KEY_PATH)) throw new Error('This installation is not paired. Run "focusrite pair" or pair from the dashboard.');
-  if (!client) client = new FocusriteClient(config, { keyPath: KEY_PATH, logger: console });
+  if (config.backend === 'fc2' && !existsSync(KEY_PATH)) throw new Error('This installation is not paired. Run "focusrite pair" or pair from the dashboard.');
+  if (!client) client = createClient(config, { logger: console });
   return client;
+}
+
+async function closeClient() {
+  const active = client;
+  client = null;
+  await active?.close();
+}
+
+async function switchBackend(backend, replacement = null) {
+  const next = replacement ?? { ...config, backend };
+  next.backend = String(backend).toLowerCase();
+  validateConfig(next);
+  await closeClient();
+  await saveConfig(next);
+  config = next;
+  deviceInfoCache = null;
+  lastError = null;
+
+  let discovery = { running: false, ports: [], securePort: null, onboardingPort: null };
+  let device = null;
+  let connectionError = null;
+  try {
+    discovery = await updateDiscovery();
+    if (config.backend === 'fc2' && !discovery.running) throw new Error('Focusrite Control 2 is not running. Start it and use Reconnect.');
+    const activeClient = await getClient();
+    device = await activeClient.deviceInfo();
+    deviceInfoCache = device;
+  } catch (error) {
+    connectionError = error.message;
+    lastError = connectionError;
+    await closeClient().catch(() => {});
+  }
+  return {
+    backend: config.backend,
+    connected: Boolean(device),
+    device,
+    ports: discovery.ports,
+    error: connectionError,
+  };
 }
 
 function sendJson(response, status, body) {
@@ -71,20 +112,23 @@ function validateMutationRequest(request) {
 }
 
 async function executeAction(rawName, rawAction, suppliedValue) {
-  const name = normalizeControlName(rawName);
+  const activeClient = await getClient();
   const action = String(rawAction).toLowerCase();
   if (action === 'get' || action === 'status') {
-    const values = await (await getClient()).read([name]);
+    const values = await activeClient.read([rawName]);
+    const name = Object.keys(values)[0];
     return { ok: true, control: name, value: values[name] };
   }
   const operation = action === 'toggle'
-    ? { control: name, action: 'toggle' }
-    : { control: name, value: action === 'set' ? suppliedValue : rawAction };
-  const result = await (await getClient()).apply([operation]);
+    ? { control: rawName, action: 'toggle' }
+    : { control: rawName, value: action === 'set' ? suppliedValue : rawAction };
+  const result = await activeClient.apply([operation]);
+  const name = Object.keys(result.values)[0];
   return { ok: true, control: name, value: result.values[name] };
 }
 
 function beginPairing() {
+  if (config.backend !== 'fc2') throw new Error('Pairing applies only to the Focusrite Control 2 backend.');
   if (pairingProcess) throw new Error('A pairing session is already active.');
   pairing = { state: 'approval', message: 'Approve the request in Focusrite Control 2.' };
   pairingProcess = spawn(process.execPath, [join(projectRoot, 'src', 'pair.js')], { cwd: projectRoot });
@@ -135,11 +179,12 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/health') {
       const discovery = await updateDiscovery();
-      sendJson(response, 200, { ok: true, api: '0.1.0', fc2Running: discovery.running, connected: client?.connected ?? false, paired: existsSync(KEY_PATH), lastError });
+      const connected = client?.connected ?? false;
+      sendJson(response, 200, { ok: true, api: packageVersion, backend: config.backend, fc2Running: discovery.running, connected, paired: existsSync(KEY_PATH), lastError: connected ? null : lastError });
       return;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/controls') {
-      sendJson(response, 200, { ok: true, controls: publicControlDefinitions() });
+      sendJson(response, 200, { ok: true, backend: config.backend, controls: await (await getClient()).controlDefinitions() });
       return;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/state') {
@@ -149,7 +194,8 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/device') {
       const discovery = await updateDiscovery();
-      if (existsSync(KEY_PATH) && discovery.running && !deviceInfoCache) deviceInfoCache = await (await getClient()).deviceInfo();
+      const canConnect = config.backend === 'usb' || (existsSync(KEY_PATH) && discovery.running);
+      if (canConnect && !deviceInfoCache) deviceInfoCache = await (await getClient()).deviceInfo();
       const device = deviceInfoCache;
       let clientPublicKey = null;
       try { clientPublicKey = JSON.parse(await readFile(KEY_PATH, 'utf8')).publicKeyHex; } catch {}
@@ -157,12 +203,13 @@ const server = http.createServer(async (request, response) => {
         ok: true,
         device,
         connection: {
+          backend: config.backend,
           fc2Running: discovery.running,
           connected: client?.connected ?? false,
           host: config.host,
           securePort: config.securePort,
           onboardingPort: config.onboardingPort,
-          protocol: 'AES70/OCP.1 over authenticated WebSocket',
+          protocol: config.backend === 'usb' ? 'Focusrite Control Protocol over USB' : 'AES70/OCP.1 over authenticated WebSocket',
           serverPublicKey: config.serverPublicKey,
           clientPublicKey,
           configPath: CONFIG_PATH,
@@ -173,14 +220,20 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/reconnect') {
       validateMutationRequest(request);
-      client?.close();
-      client = null;
+      await closeClient();
       deviceInfoCache = null;
       const discovery = await updateDiscovery();
-      if (!discovery.running) throw new Error('Focusrite Control 2 is not running.');
+      if (config.backend === 'fc2' && !discovery.running) throw new Error('Focusrite Control 2 is not running.');
       const activeClient = await getClient();
       const device = await activeClient.deviceInfo();
-      sendJson(response, 200, { ok: true, connected: activeClient.connected, device, ports: discovery.ports });
+      sendJson(response, 200, { ok: true, backend: config.backend, connected: activeClient.connected, device, ports: discovery.ports });
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/backend') {
+      validateMutationRequest(request);
+      const body = await readJson(request);
+      const result = await switchBackend(body.backend);
+      sendJson(response, 200, { ok: true, ...result });
       return;
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/batch') {
@@ -189,6 +242,82 @@ const server = http.createServer(async (request, response) => {
       if (!Array.isArray(body.operations) || body.operations.length < 1 || body.operations.length > 100) throw new Error('operations must contain between 1 and 100 commands.');
       const result = await (await getClient()).apply(body.operations);
       sendJson(response, 200, { ok: true, ...result });
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/usb/device-map') {
+      const activeClient = await getClient();
+      if (activeClient.backend !== 'usb') throw new Error('Select the direct USB backend to inspect the device map.');
+      const { map } = await activeClient.readDeviceMap();
+      const matches = searchDeviceMap(map, url.searchParams.get('search') || '.').map(({ path, offset, type, width, member }) => ({
+        path,
+        offset,
+        type,
+        width,
+        size: member.size ?? null,
+        structSize: map.structs?.[type]?.size ?? null,
+        shape: member['array-shape'],
+        access: member['access-policy'] ?? 'read-write',
+        notifyDevice: member['notify-device'],
+      }));
+      sendJson(response, 200, { ok: true, matches });
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/usb/led') {
+      const activeClient = await getClient();
+      if (activeClient.backend !== 'usb') throw new Error('Select the direct USB backend to inspect front-panel LEDs.');
+      sendJson(response, 200, { ok: true, ...await activeClient.ledInfo() });
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/usb/led') {
+      validateMutationRequest(request);
+      const activeClient = await getClient();
+      if (activeClient.backend !== 'usb') throw new Error('Select the direct USB backend to control front-panel LEDs.');
+      const body = await readJson(request);
+      const result = await activeClient.setLed(Number(body.index), body.color);
+      sendJson(response, 200, { ok: true, ...result });
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/usb/routing') {
+      const activeClient = await getClient();
+      if (activeClient.backend !== 'usb') throw new Error('Select the direct USB backend to inspect routing.');
+      sendJson(response, 200, { ok: true, ...await activeClient.routingState() });
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/usb/routing') {
+      validateMutationRequest(request);
+      const activeClient = await getClient();
+      if (activeClient.backend !== 'usb') throw new Error('Select the direct USB backend to change routing.');
+      const body = await readJson(request);
+      if (typeof body.destination !== 'string' || typeof body.source !== 'string') throw new Error('destination and source are required.');
+      sendJson(response, 200, { ok: true, ...await activeClient.setRouting(body.destination, body.source) });
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/usb/mixer/info') {
+      const activeClient = await getClient();
+      if (activeClient.backend !== 'usb') throw new Error('Select the direct USB backend to inspect the mixer.');
+      sendJson(response, 200, { ok: true, ...await activeClient.mixerInfo() });
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/usb/mixer') {
+      const activeClient = await getClient();
+      if (activeClient.backend !== 'usb') throw new Error('Select the direct USB backend to inspect the mixer.');
+      const output = url.searchParams.get('output');
+      sendJson(response, 200, { ok: true, ...await activeClient.mixerState(output || undefined) });
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/usb/mixer') {
+      validateMutationRequest(request);
+      const activeClient = await getClient();
+      if (activeClient.backend !== 'usb') throw new Error('Select the direct USB backend to change the mixer.');
+      const body = await readJson(request);
+      if (typeof body.output !== 'string' || typeof body.input !== 'string' || body.value === undefined) throw new Error('output, input, and value are required.');
+      sendJson(response, 200, { ok: true, ...await activeClient.setMixerLevel(body.output, body.input, body.value) });
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/usb/meters') {
+      const activeClient = await getClient();
+      if (activeClient.backend !== 'usb') throw new Error('Select the direct USB backend to read meters.');
+      sendJson(response, 200, { ok: true, ...await activeClient.meterState() });
       return;
     }
     const actionMatch = /^\/api\/v1\/control\/([^/]+)\/([^/]+)$/.exec(url.pathname);
@@ -207,11 +336,16 @@ const server = http.createServer(async (request, response) => {
       const update = await readJson(request);
       const next = { ...config, ...update };
       validateConfig(next);
-      await saveConfig(next);
-      config = next;
-      client?.updateConfig(config);
-      deviceInfoCache = null;
-      sendJson(response, 200, { ok: true, config });
+      if (next.backend !== config.backend) {
+        const connection = await switchBackend(next.backend, next);
+        sendJson(response, 200, { ok: true, config, connection });
+      } else {
+        await saveConfig(next);
+        config = next;
+        await closeClient();
+        deviceInfoCache = null;
+        sendJson(response, 200, { ok: true, config });
+      }
       return;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/pair') {
@@ -242,10 +376,19 @@ server.listen(config.dashboardPort, config.dashboardHost, () => {
   console.log(`${style.success('Focusrite API and dashboard:')} ${style.accent(`http://${config.dashboardHost}:${config.dashboardPort}/`)}`);
 });
 
-function shutdown() {
-  client?.close();
-  server.close(() => process.exit(0));
-  setTimeout(() => process.exit(1), 3000).unref();
+server.on('error', (error) => {
+  console.error(`Focusrite API server error: ${error.message}`);
+  process.exitCode = 1;
+});
+
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  await closeClient().catch(() => {});
+  await new Promise((resolve) => server.close(resolve));
 }
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.once(signal, () => shutdown().finally(() => process.exit(process.exitCode ?? 0)));
+}
