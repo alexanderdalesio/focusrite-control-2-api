@@ -33,6 +33,10 @@ Homebrew installs the `focusrite` command and its Node.js runtime dependency. Up
 
 Firmware update, flash erase/write, reboot, DFU, and factory-test commands are deliberately not implemented.
 
+## Stream Deck
+
+The companion [Focusrite Control for Stream Deck](https://github.com/alexanderdalesio/focusrite-control-stream-deck) plugin provides ready-made keys and dial actions for monitor, input, headphone, connection, and batch controls. Download its double-click installer from the [latest release](https://github.com/alexanderdalesio/focusrite-control-stream-deck/releases/latest).
+
 ## Choose a communication method
 
 | Method | Communication path | Focusrite Control 2 | Control surface |
