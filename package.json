@@ -1,6 +1,6 @@
 {
   "name": "focusrite-control-2-api",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Unofficial dual-transport Scarlett controller using direct USB or Focusrite Control 2",
   "author": "alexanderdalesio",
   "private": true,

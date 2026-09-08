@@ -11,6 +11,14 @@ An unofficial local controller for Focusrite interfaces with a CLI, JSON API, an
 
 This independent project is **not affiliated with or endorsed by Focusrite Audio Engineering Limited**. Focusrite and Scarlett are trademarks of their respective owner.
 
+## 🍺 Install with Homebrew
+
+```bash
+brew install alexanderdalesio/tap/focusrite-control-api
+```
+
+Homebrew installs the `focusrite` command and its Node.js runtime dependency. Upgrade later with `brew upgrade focusrite-control-api`.
+
 ## Features
 
 - Direct Focusrite Control Protocol (FCP) access over the vendor USB interface
@@ -49,7 +57,9 @@ The optional `focusrite service` login-service command is macOS-only. On Linux o
 
 Requirements: Node.js 20 or newer and a supported Focusrite USB interface.
 
-## 🚀 Install
+## Install from source
+
+Homebrew is the recommended installation method on macOS. To develop the project or install it without Homebrew:
 
 ```bash
 git clone https://github.com/alexanderdalesio/focusrite-control-2-api.git

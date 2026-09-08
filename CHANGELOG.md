@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 - 2026-09-08
+
+- Added a Homebrew tap and one-command installation for macOS users.
+- Documented Homebrew installation prominently while retaining source installation for development and unsupported package-manager environments.
+
 ## 0.2.0 - 2026-08-08
 
 Dual-communication release: one CLI, HTTP API, and dashboard can control a Scarlett either directly over USB/FCP or through an authenticated Focusrite Control 2 session.
