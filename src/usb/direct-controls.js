@@ -29,9 +29,9 @@ const GLOBAL_CONTROLS = Object.freeze({
 });
 
 const SOURCE_KINDS = Object.freeze({
-  air: { kind: 'enum', values: ['off', 'presence', 'presence-drive'], label: 'Air mode' },
-  'phantom-power': { kind: 'boolean', label: 'Phantom power' },
-  instrument: { kind: 'boolean', label: 'Instrument mode' },
+  air: { kind: 'enum', values: ['off', 'presence', 'presence-drive'], label: 'Air mode', shortAliases: ['air'] },
+  'phantom-power': { kind: 'boolean', label: 'Phantom power', shortAliases: ['phantom', '48v'] },
+  instrument: { kind: 'boolean', label: 'Instrument mode', shortAliases: ['instrument', 'inst'] },
   'clip-safe': { kind: 'boolean', label: 'Clip Safe' },
   'preamp-gain': { kind: 'integer', label: 'Preamp gain', min: 0, max: 70, step: 1, unit: 'dB' },
   'auto-gain': { kind: 'boolean', label: 'Auto Gain' },
@@ -56,11 +56,22 @@ export function buildDirectControlDefinitions(deviceMap) {
     for (const [controlName, location] of Object.entries(source.controls)) {
       const metadata = SOURCE_KINDS[controlName];
       if (!metadata || location.struct !== 'APP_SPACE' || !members[location.member]) continue;
+      const { kind, label, shortAliases = [], ...controlMetadata } = metadata;
       const canonical = `input${inputNumber}-${controlName.replace('preamp-', '')}`;
-      controls[canonical] = definition(metadata.kind, `Input ${inputNumber} ${metadata.label}`, location.member, {
-        ...metadata,
+      const aliases = new Set([
+        `input.${inputNumber}.${controlName}`,
+        `input${inputNumber}.${controlName}`,
+        ...shortAliases.flatMap((alias) => [
+          `input${inputNumber}-${alias}`,
+          `input${inputNumber}.${alias}`,
+          `input.${inputNumber}.${alias}`,
+        ]),
+      ]);
+      aliases.delete(canonical);
+      controls[canonical] = definition(kind, `Input ${inputNumber} ${label}`, location.member, {
+        ...controlMetadata,
         index: location.index,
-        aliases: [`input.${inputNumber}.${controlName}`, `input${inputNumber}.${controlName}`],
+        aliases: [...aliases],
       });
     }
     if (members.inputMutes) {
