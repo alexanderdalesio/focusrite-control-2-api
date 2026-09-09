@@ -38,7 +38,7 @@
     "jsqr": "^1.4.0",
     "libsodium-wrappers": "^0.8.4",
     "pngjs": "^7.0.0",
-    "usb": "^2.17.0",
+    "usb": "^3.1.0",
     "ws": "^8.21.2"
   },
   "license": "MIT"
