@@ -9,13 +9,19 @@ const map = {
       members: {
         dimSwitch: { type: 'uint8', offset: 2, size: 1, 'array-shape': null, range: { min: 0, max: 1 } },
         inputAir: { type: 'uint8', offset: 10, size: 2, 'array-shape': [2], range: { min: 0, max: 2 } },
+        input48V: { type: 'uint8', offset: 12, size: 2, 'array-shape': [2], range: { min: 0, max: 1 } },
+        inputInst: { type: 'uint8', offset: 14, size: 2, 'array-shape': [2], range: { min: 0, max: 1 } },
         outputVol: { type: 'int16', offset: 20, size: 4, 'array-shape': [2], range: { min: -127, max: 0 } },
       },
     },
   },
   'device-specification': {
     sources: [
-      { name: 'Analogue 1', type: 'analogue', controls: { air: { struct: 'APP_SPACE', member: 'inputAir', index: 0 } } },
+      { name: 'Analogue 1', type: 'analogue', controls: {
+        air: { struct: 'APP_SPACE', member: 'inputAir', index: 0 },
+        'phantom-power': { struct: 'APP_SPACE', member: 'input48V', index: 0 },
+        instrument: { struct: 'APP_SPACE', member: 'inputInst', index: 0 },
+      } },
       { name: 'Analogue 2', type: 'analogue', controls: { air: { struct: 'APP_SPACE', member: 'inputAir', index: 1 } } },
     ],
     destinations: [
@@ -31,6 +37,11 @@ test('builds direct controls from device-provided channel locations', () => {
   assert.equal(controls['input2-air'].index, 1);
   assert.equal(controls['monitor-2-level'].index, 1);
   assert.equal(normalizeDirectControlName(controls, 'input.1.air'), 'input1-air');
+  assert.equal(normalizeDirectControlName(controls, 'input1-phantom'), 'input1-phantom-power');
+  assert.equal(normalizeDirectControlName(controls, 'input.1.48v'), 'input1-phantom-power');
+  assert.equal(normalizeDirectControlName(controls, 'input1.inst'), 'input1-instrument');
+  assert.equal(controls['input1-phantom-power'].label, 'Input 1 Phantom power');
+  assert.equal(controls['input1-instrument'].label, 'Input 1 Instrument mode');
   assert.equal(normalizeDirectControlValue(controls, 'input1-air', 'presence-drive'), 2);
 });
 

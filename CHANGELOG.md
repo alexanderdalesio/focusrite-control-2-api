@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 - 2026-09-08
+
+- Added consistent direct-USB aliases for phantom power and instrument mode, including the shorter names already accepted by the FC2 backend.
+- Preserved input numbers in direct-USB control labels so similarly named controls remain distinguishable in generated clients.
+
 ## 0.3.0 - 2026-09-08
 
 - Added explicit, authenticated LAN access for remote automation clients.
