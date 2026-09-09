@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 - 2026-09-08
+
+- Added explicit, authenticated LAN access for remote automation clients.
+- Added `focusrite network enable|disable|status|token|rotate` management commands.
+- Kept localhost access credential-free while requiring a constant-time-checked bearer token for every remote request.
+- Removed access tokens from configuration API responses, normal configuration output, and support bundles.
+
 ## 0.2.1 - 2026-09-08
 
 - Added a Homebrew tap and one-command installation for macOS users.

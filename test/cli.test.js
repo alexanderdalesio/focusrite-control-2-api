@@ -51,3 +51,12 @@ test('backend without an argument reports the selected communication method', as
     connected: false,
   });
 });
+
+test('network status is disabled by default and never prints a token', async (t) => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), 'focusrite-network-test-'));
+  t.after(() => rm(dataDirectory, { recursive: true, force: true }));
+  const { stdout } = await run(process.execPath, [cli, 'network', 'status', '--json'], {
+    env: { ...process.env, FOCUSRITE_DATA_DIR: dataDirectory },
+  });
+  assert.deepEqual(JSON.parse(stdout), { ok: true, enabled: false, urls: [] });
+});

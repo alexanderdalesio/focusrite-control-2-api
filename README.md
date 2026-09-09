@@ -149,7 +149,7 @@ Append `--json` for machine-readable output. Human output uses aligned columns, 
 
 `focusrite gui` starts the local service if needed and opens a focused hardware-control dashboard. Inputs, outputs, ranges, and device identity come from the connected interface. Numeric controls use vertically draggable rotary dials; input and output groups can be collapsed. Routing, mixer, and meter operations remain available through the CLI and HTTP API.
 
-The API binds to `127.0.0.1:41780`:
+The API binds to `127.0.0.1:41780` by default:
 
 ```bash
 curl http://127.0.0.1:41780/api/v1/state
@@ -160,6 +160,25 @@ curl -X POST http://127.0.0.1:41780/api/v1/batch \
 ```
 
 The service keeps the selected USB or encrypted FC2 session open. Batch operations reuse that session instead of reconnecting for every control. See the [HTTP API reference](docs/API.md).
+
+### Authenticated network access
+
+Localhost-only access is the default. To let another trusted computer—such as a Windows PC running Stream Deck—control the API on this Mac, enable its authenticated LAN listener:
+
+```bash
+focusrite network enable
+```
+
+The command prints reachable IPv4 URLs and a generated access token. Supply both to the remote client. Remote requests must send `Authorization: Bearer TOKEN`; requests without the exact token are rejected. Useful management commands are:
+
+```bash
+focusrite network status
+focusrite network token
+focusrite network rotate
+focusrite network disable
+```
+
+The local dashboard and CLI remain accessible without a token from the Mac itself. Network mode listens on all interfaces, so use it only on a trusted LAN, keep the token private, and do not forward port `41780` from your router.
 
 ## 🧰 Troubleshooting
 

@@ -2,6 +2,16 @@
 
 The HTTP API presents one control model over both supported communication methods: authenticated Focusrite Control 2 and direct USB/FCP. The server listens on `http://127.0.0.1:41780` by default. Responses contain `"ok": true` on success or `"ok": false` and an `error` message on failure.
 
+`focusrite network enable` changes the listener to `0.0.0.0:41780` and creates a random access token. Every non-loopback request must then include:
+
+```http
+Authorization: Bearer GENERATED_TOKEN
+```
+
+Loopback requests remain credential-free. Tokens are stored only in the user's mode-`0600` configuration file and are omitted from configuration API responses and support bundles.
+
+The dashboard's remote launch URL passes the token once, stores it for that browser tab only, and removes it from the visible address bar. Prefer the normal `Authorization` header for integrations.
+
 The selected method is persistent and shared by the CLI and dashboard. Ordinary control endpoints work with either method; `/api/v1/usb/*` endpoints expose capabilities that require direct USB.
 
 ## Status and controls
@@ -125,4 +135,4 @@ The internal capacity is not a count of user-addressable physical LEDs. The resp
 
 Pairing applies only to the FC2 backend. The QR endpoint accepts `{ "dataUrl": "data:image/png;base64,..." }` after the approval step.
 
-The API is local-only. It rejects non-local host headers, cross-origin browser requests, and cross-site mutations.
+The API is localhost-only unless authenticated network access is explicitly enabled. It rejects unauthenticated remote requests, cross-origin browser requests, and cross-site mutations.

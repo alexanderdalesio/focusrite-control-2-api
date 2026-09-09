@@ -4,9 +4,11 @@
 
 The X25519 private identity under `~/Library/Application Support/focusrite-control-2-api/client-key.json` grants control access approved by Focusrite Control 2. Treat it as a secret. Do not attach it to issues or commit it to a repository.
 
-## Local API
+## HTTP API
 
-The API binds to `127.0.0.1` and rejects non-local browser origins. Do not proxy or expose port 41780 to another machine or the public internet. State-changing GET endpoints exist only for local clients with limited HTTP support.
+The API binds to `127.0.0.1` by default. `focusrite network enable` is an explicit opt-in that listens on all interfaces and requires a random bearer token for every non-loopback request. The token is stored in the user's mode-`0600` configuration file, omitted from HTTP configuration responses and support bundles, and should be treated as a password.
+
+Use network mode only on a trusted LAN. Do not forward or publicly proxy port 41780. Rotate a disclosed token with `focusrite network rotate` or return to local-only mode with `focusrite network disable`. Browser-origin and cross-site mutation checks remain active in either mode.
 
 ## Communication methods
 
@@ -14,7 +16,7 @@ The application can communicate through a paired Focusrite Control 2 service or 
 
 ## Direct hardware access
 
-Direct USB mode can change monitor levels, phantom power, routing, mixer coefficients, and front-panel state. Run it only as a trusted local user, keep API access local, and validate automation values before applying them.
+Direct USB mode can change monitor levels, phantom power, routing, mixer coefficients, and front-panel state. Run it only as a trusted user and validate automation values before applying them.
 
 The direct transport permits a small allowlist of control/read opcodes. Firmware flashing, flash erase/write, reboot, DFU, and factory-test operations are intentionally excluded. Requests for those capabilities are out of scope for this project.
 

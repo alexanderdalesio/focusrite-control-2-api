@@ -19,6 +19,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   onboardingPort: 58323,
   dashboardHost: '127.0.0.1',
   dashboardPort: 41780,
+  apiAccessToken: '',
   serverPublicKey: '',
   clientName: 'Focusrite Command API',
   usbVendorId: 0x1235,
@@ -57,4 +58,6 @@ export function validateConfig(config) {
     if (!Number.isInteger(Number(config[field])) || Number(config[field]) < 0 || Number(config[field]) > 0xffff) throw new Error(`${field} must be a 16-bit USB identifier.`);
   }
   if (!Number.isInteger(Number(config.usbTimeout)) || Number(config.usbTimeout) < 250 || Number(config.usbTimeout) > 60000) throw new Error('usbTimeout must be between 250 and 60000 milliseconds.');
+  if (typeof config.dashboardHost !== 'string' || !config.dashboardHost.trim()) throw new Error('dashboardHost must be a hostname or IP address.');
+  if (config.dashboardHost !== '127.0.0.1' && String(config.apiAccessToken ?? '').length < 32) throw new Error('Network API access requires an apiAccessToken of at least 32 characters.');
 }

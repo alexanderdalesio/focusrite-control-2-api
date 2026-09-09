@@ -10,9 +10,19 @@ let polling = false;
 let definitionFingerprint = '';
 let developerFingerprint = '';
 let controlRevision = 0;
+const initialUrl = new URL(window.location.href);
+const accessToken = initialUrl.searchParams.get('access_token') || sessionStorage.getItem('focusriteApiAccessToken') || '';
+if (initialUrl.searchParams.has('access_token')) {
+  sessionStorage.setItem('focusriteApiAccessToken', accessToken);
+  initialUrl.searchParams.delete('access_token');
+  history.replaceState(null, '', initialUrl);
+}
 
 async function api(path, options = {}) {
-  const response = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...options });
+  const headers = new Headers(options.headers);
+  headers.set('Content-Type', 'application/json');
+  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
+  const response = await fetch(path, { ...options, headers });
   const body = await response.json();
   if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
   return body;

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { spawn, execFile } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, networkInterfaces } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClient } from '../src/backend.js';
@@ -46,6 +47,7 @@ ${style.heading('Connection')}
   ${style.command('focusrite doctor')}
   ${style.command('focusrite ports')}
   ${style.command('focusrite reconnect')}
+  ${style.command('focusrite network')} enable|disable|status|token|rotate
 
 ${style.heading('Maintenance')}
   ${style.command('focusrite logs')} [LINES]
@@ -86,6 +88,16 @@ function printRows(rows) {
   if (!rows.length) return;
   const width = Math.max(...rows.map(([name]) => name.length));
   for (const [name, value] of rows) console.log(`${style.accent(name.padEnd(width))}  ${value}`);
+}
+
+function networkUrls(config) {
+  const addresses = Object.values(networkInterfaces()).flat().filter((entry) => entry?.family === 'IPv4' && !entry.internal);
+  return [...new Set(addresses.map(({ address }) => `http://${address}:${config.dashboardPort}`))];
+}
+
+function safeConfig(config) {
+  const { apiAccessToken: _secret, ...visible } = config;
+  return { ...visible, networkAccess: config.dashboardHost !== '127.0.0.1' };
 }
 
 async function request(path, options = {}) {
@@ -370,7 +382,7 @@ async function runUsb(command = 'status', parameters = []) {
   }
 }
 
-async function runService(action = 'status') {
+async function runService(action = 'status', { quiet = false } = {}) {
   if (process.platform !== 'darwin') throw new Error('The managed login service is currently available only on macOS. Run "focusrite api" under your preferred process manager on this platform.');
   const label = 'local.focusrite.control2-api';
   const domain = `gui/${process.getuid()}`;
@@ -393,18 +405,18 @@ async function runService(action = 'status') {
 </dict></plist>\n`);
     try { await execFileAsync('launchctl', ['bootout', target]); } catch {}
     await execFileAsync('launchctl', ['bootstrap', domain, plist]);
-    console.log(style.success('Installed and started the Focusrite API login service.'));
+    if (!quiet) console.log(style.success('Installed and started the Focusrite API login service.'));
     return;
   }
   if (action === 'uninstall') {
     try { await execFileAsync('launchctl', ['bootout', target]); } catch {}
     if (existsSync(plist)) await unlink(plist);
-    console.log(style.success('Uninstalled the Focusrite API login service.'));
+    if (!quiet) console.log(style.success('Uninstalled the Focusrite API login service.'));
     return;
   }
   if (action === 'start' || action === 'restart') {
     await execFileAsync('launchctl', ['kickstart', '-k', target]);
-    console.log(style.success('Focusrite API service started.'));
+    if (!quiet) console.log(style.success('Focusrite API service started.'));
     return;
   }
   if (action === 'status') {
@@ -470,6 +482,51 @@ async function main() {
       if (result.connected) console.log(`${style.success('Connected')} to ${style.heading(result.device?.productName ?? 'Focusrite interface')}.`);
       else console.log(style.warning(result.error));
     }
+    return;
+  }
+
+  if (command === 'network') {
+    const action = first || 'status';
+    const config = await loadConfig();
+    if (!['enable', 'disable', 'status', 'token', 'rotate'].includes(action)) throw new Error('Usage: focusrite network enable|disable|status|token|rotate');
+
+    if (action === 'enable' || action === 'rotate') {
+      config.dashboardHost = '0.0.0.0';
+      if (action === 'rotate' || String(config.apiAccessToken ?? '').length < 32) config.apiAccessToken = randomBytes(32).toString('hex');
+      validateConfig(config);
+      await saveConfig(config);
+    } else if (action === 'disable') {
+      config.dashboardHost = '127.0.0.1';
+      config.apiAccessToken = '';
+      validateConfig(config);
+      await saveConfig(config);
+    }
+
+    let restartRequired = false;
+    if (['enable', 'disable', 'rotate'].includes(action)) {
+      restartRequired = true;
+      if (process.platform === 'darwin') {
+        try { await runService('restart', { quiet: true }); restartRequired = false; } catch {}
+      }
+    }
+
+    if (jsonOutput) {
+      const enabled = config.dashboardHost !== '127.0.0.1';
+      console.log(JSON.stringify({ ok: true, enabled, urls: enabled ? networkUrls(config) : [], ...(restartRequired ? { restartRequired: true } : {}), ...(action === 'token' || action === 'enable' || action === 'rotate' ? { token: config.apiAccessToken || null } : {}) }));
+      return;
+    }
+    if (action === 'token') {
+      if (!config.apiAccessToken) throw new Error('Network API access is disabled. Run "focusrite network enable" first.');
+      console.log(config.apiAccessToken);
+      return;
+    }
+    printRows([
+      ['Network API', config.dashboardHost !== '127.0.0.1' ? style.success('Enabled') : style.label('Disabled')],
+      ['Addresses', config.dashboardHost !== '127.0.0.1' ? (networkUrls(config).join(', ') || 'No LAN IPv4 address found') : 'Localhost only'],
+      ['Access token', config.apiAccessToken ? (['enable', 'rotate'].includes(action) ? style.value(config.apiAccessToken) : 'Configured') : 'Not configured'],
+    ]);
+    if (['enable', 'rotate'].includes(action)) console.log(`\n${style.warning('Keep this token private.')} Enter it once when adding the API in the Stream Deck plugin.`);
+    if (restartRequired) console.log(style.warning('Restart the running Focusrite API process to apply this change.'));
     return;
   }
 
@@ -642,7 +699,7 @@ async function main() {
   }
   if (command === 'config') {
     const config = await loadConfig();
-    if (!first || first === 'show') { console.log(JSON.stringify(config, null, 2)); return; }
+    if (!first || first === 'show') { console.log(JSON.stringify(safeConfig(config), null, 2)); return; }
     if (first !== 'set' || second === undefined || rest[0] === undefined) throw new Error('Usage: focusrite config set KEY VALUE');
     const key = second; const rawValue = rest.join(' ');
     if (!(key in config)) throw new Error(`Unknown configuration key: ${key}`);

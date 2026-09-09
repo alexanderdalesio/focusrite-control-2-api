@@ -10,6 +10,7 @@ import { loadConfig, saveConfig, validateConfig, CONFIG_PATH, KEY_PATH } from '.
 import { discoverLocalPorts } from './discovery.js';
 import { outputStyle as style } from './terminal.js';
 import { searchDeviceMap } from './usb/device-map.js';
+import { authorizeApiRequest, isLoopback } from './http-security.js';
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const htmlPath = join(projectRoot, 'public', 'index.html');
@@ -98,11 +99,31 @@ async function readJson(request, limit = 12 * 1024 * 1024) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 }
 
-function validateLocalRequest(request) {
-  const host = String(request.headers.host ?? '').split(':')[0];
-  if (!['127.0.0.1', 'localhost'].includes(host)) throw Object.assign(new Error('This API accepts localhost requests only.'), { statusCode: 403 });
+function validateApiRequest(request, url) {
+  if (!(request.method === 'GET' && url.pathname === '/app.js')) {
+    authorizeApiRequest({
+      remoteAddress: request.socket.remoteAddress,
+      bindHost: config.dashboardHost,
+      authorization: request.headers.authorization || (url.pathname === '/' && url.searchParams.get('access_token') ? `Bearer ${url.searchParams.get('access_token')}` : ''),
+      accessToken: config.apiAccessToken,
+    });
+  }
   const origin = request.headers.origin;
-  if (origin && !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(origin)) throw Object.assign(new Error('Cross-origin requests are not allowed.'), { statusCode: 403 });
+  if (origin) {
+    let sameOrigin = false;
+    try {
+      const parsed = new URL(origin);
+      sameOrigin = isLoopback(request.socket.remoteAddress)
+        ? /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(origin)
+        : ['http:', 'https:'].includes(parsed.protocol) && parsed.host === request.headers.host;
+    } catch {}
+    if (!sameOrigin) throw Object.assign(new Error('Cross-origin requests are not allowed.'), { statusCode: 403 });
+  }
+}
+
+function publicConfig() {
+  const { apiAccessToken: _secret, ...safe } = config;
+  return { ...safe, networkAccess: config.dashboardHost !== '127.0.0.1' };
 }
 
 function validateMutationRequest(request) {
@@ -159,8 +180,8 @@ async function submitQr(dataUrl) {
 
 const server = http.createServer(async (request, response) => {
   try {
-    validateLocalRequest(request);
     const url = new URL(request.url, 'http://127.0.0.1');
+    validateApiRequest(request, url);
 
     if (request.method === 'GET' && url.pathname === '/') {
       response.writeHead(200, {
@@ -180,7 +201,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'GET' && url.pathname === '/api/v1/health') {
       const discovery = await updateDiscovery();
       const connected = client?.connected ?? false;
-      sendJson(response, 200, { ok: true, api: packageVersion, backend: config.backend, fc2Running: discovery.running, connected, paired: existsSync(KEY_PATH), lastError: connected ? null : lastError });
+      sendJson(response, 200, { ok: true, api: packageVersion, backend: config.backend, fc2Running: discovery.running, connected, paired: existsSync(KEY_PATH), networkAccess: config.dashboardHost !== '127.0.0.1', lastError: connected ? null : lastError });
       return;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/controls') {
@@ -328,7 +349,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/config') {
-      sendJson(response, 200, { ok: true, config: { ...config, clientName: config.clientName } });
+      sendJson(response, 200, { ok: true, config: publicConfig() });
       return;
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/config') {
@@ -338,13 +359,13 @@ const server = http.createServer(async (request, response) => {
       validateConfig(next);
       if (next.backend !== config.backend) {
         const connection = await switchBackend(next.backend, next);
-        sendJson(response, 200, { ok: true, config, connection });
+        sendJson(response, 200, { ok: true, config: publicConfig(), connection });
       } else {
         await saveConfig(next);
         config = next;
         await closeClient();
         deviceInfoCache = null;
-        sendJson(response, 200, { ok: true, config });
+        sendJson(response, 200, { ok: true, config: publicConfig() });
       }
       return;
     }
@@ -367,7 +388,7 @@ const server = http.createServer(async (request, response) => {
     }
     sendJson(response, 404, { ok: false, error: 'Not found.' });
   } catch (error) {
-    lastError = error.message;
+    if (!error.statusCode) lastError = error.message;
     sendJson(response, error.statusCode ?? (/not paired|not open|ECONNREFUSED/i.test(error.message) ? 503 : 400), { ok: false, error: error.message });
   }
 });
