@@ -10,6 +10,8 @@ import {
 import {
   FCP_HEADER_SIZE,
   FCP_NOTIFICATION_ACK,
+  FcpDeviceError,
+  FcpTransportError,
   OPCODE,
   USB_REQUEST,
   dataRequest,
@@ -198,6 +200,7 @@ export class FcpUsbTransport {
     this.sequence = 0;
     this.events = [];
     this.queue = Promise.resolve();
+    this.failure = null;
   }
 
   #setup(request) {
@@ -211,8 +214,7 @@ export class FcpUsbTransport {
     );
   }
 
-  async #waitForAck() {
-    const deadline = Date.now() + this.timeout;
+  async #waitForAck(deadline = Date.now() + this.timeout) {
     while (Date.now() < deadline) {
       const remaining = Math.max(1, deadline - Date.now());
       const message = asBytes(
@@ -229,7 +231,16 @@ export class FcpUsbTransport {
   }
 
   command(opcode, requestData = new Uint8Array(), responseSize = 0) {
-    const result = this.queue.then(() => this.#command(opcode, requestData, responseSize));
+    const result = this.queue.then(async () => {
+      if (this.failure) throw this.failure;
+      try {
+        return await this.#command(opcode, requestData, responseSize);
+      } catch (error) {
+        if (error instanceof FcpDeviceError) throw error;
+        this.failure = new FcpTransportError(error.message, { cause: error });
+        throw this.failure;
+      }
+    });
     this.queue = result.catch(() => {});
     return result;
   }
@@ -238,7 +249,8 @@ export class FcpUsbTransport {
     const sequence = this.sequence;
     this.sequence = (this.sequence + 1) & 0xffff;
     const packet = encodePacket(opcode, sequence, requestData);
-    const acknowledgement = this.#waitForAck();
+    const deadline = Date.now() + this.timeout;
+    const acknowledgement = this.#waitForAck(deadline);
     acknowledgement.catch(() => {});
     const written = await this.device.nativeControlTransferOut(
       this.#setup(USB_REQUEST.commandTransmit),
@@ -247,15 +259,27 @@ export class FcpUsbTransport {
     );
     if (written !== packet.byteLength) throw new Error(`FCP command wrote ${written} of ${packet.byteLength} bytes.`);
     await acknowledgement;
-    const response = asBytes(
-      await this.device.nativeControlTransferIn(
-        this.#setup(USB_REQUEST.commandReceive),
-        this.timeout,
-        FCP_HEADER_SIZE + responseSize,
-      ),
-      'FCP command response',
-    );
-    return validateResponse(response, { opcode, sequence, responseSize });
+    for (let stale = 0; stale < 4 && Date.now() < deadline; stale += 1) {
+      const response = asBytes(
+        await this.device.nativeControlTransferIn(
+          this.#setup(USB_REQUEST.commandReceive),
+          Math.max(1, deadline - Date.now()),
+          FCP_HEADER_SIZE + responseSize,
+        ),
+        'FCP command response',
+      );
+      if (response.byteLength >= FCP_HEADER_SIZE) {
+        const received = new DataView(response.buffer, response.byteOffset, response.byteLength).getUint16(6, true);
+        const age = (sequence - received) & 0xffff;
+        if (age > 0 && age < 0x8000) {
+          // An old queued ACK may precede the response to this command. Never retransmit the write.
+          await this.#waitForAck(deadline);
+          continue;
+        }
+      }
+      return validateResponse(response, { opcode, sequence, responseSize });
+    }
+    throw new Error('FCP response did not synchronize before the command deadline. Reconnect before retrying.');
   }
 
   async initialize() {
@@ -349,12 +373,13 @@ export class DirectFocusriteClient {
     this.deviceMapPromise = null;
     this.controls = null;
     this.controlReadWarnings = new Set();
+    this.unavailableControls = new Map();
     this.queue = Promise.resolve();
     this.connectPromise = null;
   }
 
   get connected() {
-    return Boolean(this.device?.opened && this.transport);
+    return Boolean(this.device?.opened && this.transport && !this.transport.failure);
   }
 
   get backend() {
@@ -362,6 +387,7 @@ export class DirectFocusriteClient {
   }
 
   async connect() {
+    if (this.transport?.failure) throw this.transport.failure;
     if (this.connected) return this;
     if (!this.connectPromise) this.connectPromise = this.#open();
     try {
@@ -406,7 +432,7 @@ export class DirectFocusriteClient {
       const ownership = /claim|access|busy|exclusive|open|iokit/i.test(error.message)
         ? ' Quit Focusrite Control 2 and retry; direct USB mode needs exclusive access to the control interface.'
         : '';
-      throw new Error(`Cannot open the Focusrite USB control interface: ${error.message}.${ownership}`);
+      throw new Error(`Cannot open the Focusrite USB control interface: ${error.message}.${ownership}`, { cause: error });
     }
   }
 
@@ -424,6 +450,7 @@ export class DirectFocusriteClient {
     this.deviceMapPromise = null;
     this.controls = null;
     this.controlReadWarnings.clear();
+    this.unavailableControls.clear();
     try { if (device?.opened && interfaceNumber != null) await device.releaseInterface(); } catch {}
     try { if (device?.opened) await device.close(); } catch {}
   }
@@ -497,8 +524,11 @@ export class DirectFocusriteClient {
       for (const name of selected) {
         try {
           entries.push([name, await this.#readControl(name)]);
+          this.unavailableControls.delete(name);
         } catch (error) {
-          if (names?.length) throw error;
+          // A device-rejected field is local to that field; a failed transport invalidates the entire snapshot.
+          if (names?.length || !(error instanceof FcpDeviceError)) throw error;
+          this.unavailableControls.set(name, error.message);
           if (!this.controlReadWarnings.has(name)) {
             this.controlReadWarnings.add(name);
             console.warn(`Skipping unreadable device-map control ${name}: ${error.message}`);
@@ -523,6 +553,15 @@ export class DirectFocusriteClient {
         normalized.push({ control, value: normalizeDirectControlValue(this.controls, control, value) });
       }
       const originals = new Map();
+      const planned = new Map();
+      for (const { control, value } of normalized) {
+        const condition = this.controls[control].disabledWhen;
+        if (condition && this.controls[condition.control]) {
+          const state = planned.has(condition.control) ? planned.get(condition.control) : await this.#readControl(condition.control);
+          if (state === condition.value) throw new Error(`${control}: ${this.controls[control].disabledReason}`);
+        }
+        planned.set(control, value);
+      }
       for (const { control } of normalized) {
         if (!originals.has(control)) {
           const value = await this.#readControl(control);
@@ -535,6 +574,14 @@ export class DirectFocusriteClient {
           attempted.push(control);
           await this.#writeControl(control, value);
         }
+        const values = {};
+        for (const [control, value] of planned) {
+          values[control] = await this.#readControl(control);
+          const item = this.controls[control];
+          const expected = item.kind === 'enum' ? item.values[value] : value;
+          if (values[control] !== expected) throw new Error(`${control} verification failed: requested ${expected}, received ${values[control]}.`);
+        }
+        return { applied: normalized.length, values };
       } catch (error) {
         const rollbackErrors = [];
         for (const control of [...new Set(attempted)].reverse()) {
@@ -543,9 +590,6 @@ export class DirectFocusriteClient {
         const suffix = rollbackErrors.length ? ` Rollback also failed for ${rollbackErrors.join('; ')}.` : ' Earlier changes were rolled back.';
         throw new Error(`${error.message}.${suffix}`, { cause: error });
       }
-      const values = {};
-      for (const { control } of normalized) values[control] = await this.#readControl(control);
-      return { applied: normalized.length, values };
     });
   }
 

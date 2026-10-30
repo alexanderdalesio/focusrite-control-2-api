@@ -1,7 +1,7 @@
 export const CONTROLS = Object.freeze({
   dim: control('boolean', 4117, 'Monitor Dim', ['monitor.dim']),
   'monitor-mute': control('mute', 4116, 'Monitor Mute', ['mute', 'monitor.mute']),
-  'monitor-gain': control('gain', 4118, 'Monitor Level', ['volume', 'monitor.level'], { min: -80, max: 6, step: 0.5, unit: 'dB' }),
+  'monitor-gain': control('gain', 4118, 'Monitor Level', ['volume', 'monitor.level'], { min: -80, max: 6, step: 1, unit: 'dB' }),
   'input1-gain': control('gain', 4127, 'Input 1 Gain', ['input1.gain', 'input.1.gain'], { min: 0, max: 69, step: 0.5, unit: 'dB' }),
   'input1-air': control('boolean', 4134, 'Input 1 Air', ['input1.air', 'input.1.air']),
   'input1-phantom': control('boolean', 4132, 'Input 1 Phantom Power', ['input1.48v', 'input.1.phantom', 'input.1.48v']),
@@ -28,8 +28,8 @@ export function normalizeControlName(value) {
   return name;
 }
 
-export function normalizeControlValue(name, value) {
-  const definition = CONTROLS[normalizeControlName(name)];
+export function normalizeControlValue(name, value, liveRange = {}) {
+  const definition = { ...CONTROLS[normalizeControlName(name)], ...liveRange };
   if (definition.kind === 'boolean' || definition.kind === 'mute') {
     if (typeof value === 'boolean') return value;
     const text = String(value).trim().toLowerCase();

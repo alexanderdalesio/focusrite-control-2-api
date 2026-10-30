@@ -7,7 +7,7 @@
 An unofficial local controller for Focusrite interfaces with a CLI, JSON API, and browser dashboard. It offers two communication methods behind one consistent control surface: direct USB/FCP access to the interface, or authenticated communication through Focusrite Control 2.
 
 > [!IMPORTANT]
-> Hardware testing is limited to **Focusrite Control 2 v1.1081.0.0** and a **Scarlett 16i16 4th Gen running firmware v3.0.2778.0 or v4.0.2827.0 on macOS**. Other models, firmware, and operating systems are unverified.
+> Hardware testing is limited to **Focusrite Control 2 v1.1081.0.0 / v1.1210.0.0** and a **Scarlett 16i16 4th Gen running firmware v3.0.2778.0 or v4.0.2827.0 on macOS**. Other models, firmware, and operating systems are unverified.
 
 This independent project is **not affiliated with or endorsed by Focusrite Audio Engineering Limited**. Focusrite and Scarlett are trademarks of their respective owner.
 
@@ -33,6 +33,8 @@ Homebrew installs the `focusrite` command and its Node.js runtime dependency. Up
 - Authenticated Focusrite Control 2 communication for workflows that need the official application open
 
 Firmware update, flash erase/write, reboot, DFU, and factory-test commands are deliberately not implemented.
+
+On firmware v4.0.2827, mapped Auto Gain target/mode/maximum-gain settings and front-panel metering changes reject their USB notifications; those operations are not validated as working. Individual output levels follow their hardware-control switches, and the API/dashboard reject independent level changes while hardware control is enabled. Use the master monitor level or explicitly select software control first.
 
 ## Stream Deck
 

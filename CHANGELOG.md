@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1 - 2026-10-29
+
+- Matched stale USB replies within a bounded deadline without retransmitting writes; unrecoverable transport failures now invalidate the session and return HTTP 503.
+- Distinguished device-rejected optional reads from failed transport snapshots, exposed partial-state diagnostics, and made the dashboard recover from background read errors.
+- Restored dotted USB gain aliases and rejected hardware-controlled output-level changes before any batch writes, with disabled dashboard dials and explanatory tooltips.
+- Corrected the FC2 monitor-mute toggle and whole-dB monitor precision, adopted live AES70 gain limits, and rejected acknowledged writes whose readback does not match.
+- Added transport, rollback, gain, and dashboard regressions; validated 160 complete USB snapshots and 60 complete FC2 snapshots under concurrent request load, with reversible writes and settings restoration.
+- Verified FC2 v1.1210.0.0 with Scarlett firmware v4.0.2827. Documented unsupported Auto Gain configuration and front-panel metering notifications rather than guessing replacements.
+
 ## 0.4.0 - 2026-10-29
 
 - Added hardware validation for every device-map-derived control before it is exposed to the CLI, API, or dashboard.

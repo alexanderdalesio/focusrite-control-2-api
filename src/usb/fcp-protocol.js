@@ -1,6 +1,27 @@
 export const FCP_HEADER_SIZE = 16;
 export const FCP_NOTIFICATION_ACK = 1;
 
+export class FcpDeviceError extends Error {
+  constructor(code, opcode) {
+    super(`The Scarlett returned FCP error ${code} for opcode 0x${opcode.toString(16)}.`);
+    this.name = 'FcpDeviceError';
+    this.code = code;
+    this.opcode = opcode;
+  }
+}
+
+export class FcpTransportError extends Error {
+  constructor(message, options) {
+    super(message, options);
+    this.name = 'FcpTransportError';
+    this.transportFault = true;
+  }
+}
+
+export function isFcpTransportError(error) {
+  return Boolean(error?.transportFault || (error?.cause && isFcpTransportError(error.cause)));
+}
+
 export const USB_REQUEST = Object.freeze({
   step0: 0,
   commandTransmit: 2,
@@ -69,7 +90,7 @@ export function validateResponse(packet, { opcode, sequence, responseSize }) {
   const response = decodePacket(packet);
   if (response.opcode !== opcode) throw new Error(`FCP opcode mismatch: expected 0x${opcode.toString(16)}, received 0x${response.opcode.toString(16)}.`);
   if (response.sequence !== sequence) throw new Error(`FCP sequence mismatch: expected ${sequence}, received ${response.sequence}.`);
-  if (response.error !== 0) throw new Error(`The Scarlett returned FCP error ${response.error} for opcode 0x${opcode.toString(16)}.`);
+  if (response.error !== 0) throw new FcpDeviceError(response.error, opcode);
   if (response.size !== responseSize) throw new Error(`FCP response size mismatch: expected ${responseSize}, received ${response.size}.`);
   return response.data;
 }

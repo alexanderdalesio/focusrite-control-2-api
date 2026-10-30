@@ -23,6 +23,7 @@ export class FocusriteClient {
     this.session = null;
     this.connecting = null;
     this.queue = Promise.resolve();
+    this.gainRanges = {};
   }
 
   get connected() {
@@ -34,7 +35,11 @@ export class FocusriteClient {
   }
 
   async controlDefinitions() {
-    return publicControlDefinitions();
+    const gains = Object.keys(CONTROLS).filter((name) => CONTROLS[name].kind === 'gain');
+    if (!this.connected || gains.some((name) => !this.gainRanges[name])) await this.read(gains);
+    return Object.fromEntries(Object.entries(publicControlDefinitions()).map(([name, definition]) => [
+      name, { ...definition, ...this.gainRanges[name] },
+    ]));
   }
 
   async connect() {
@@ -56,6 +61,7 @@ export class FocusriteClient {
   close() {
     const session = this.session;
     this.session = null;
+    this.gainRanges = {};
     try { session?.device.close(); } catch {}
     try { session?.connection.cleanup(); } catch {}
   }
@@ -93,7 +99,12 @@ export class FocusriteClient {
     const definition = CONTROLS[name];
     if (definition.kind === 'boolean') return new OcaBooleanActuator(definition.objectNumber, session.device).GetSetting();
     if (definition.kind === 'mute') return new OcaMute(definition.objectNumber, session.device).GetState().then((state) => Number(state) === 1);
-    return new OcaGain(definition.objectNumber, session.device).GetGain().then((result) => Number(firstValue(result)));
+    return new OcaGain(definition.objectNumber, session.device).GetGain().then((result) => {
+      const min = Number(typeof result?.item === 'function' ? result.item(1) : result?.[1]);
+      const max = Number(typeof result?.item === 'function' ? result.item(2) : result?.[2]);
+      if (Number.isFinite(min) && Number.isFinite(max) && min <= max) this.gainRanges[name] = { min, max };
+      return Number(firstValue(result));
+    });
   }
 
   #scheduleWrite(session, name, value) {
@@ -127,7 +138,7 @@ export class FocusriteClient {
         return { control, action: item.action ?? 'set', value: item.value };
       });
 
-      const toggleNames = [...new Set(normalized.filter((item) => item.action === 'toggle').map((item) => item.control))];
+      const toggleNames = [...new Set(normalized.filter((item) => item.action === 'toggle' || CONTROLS[item.control].kind === 'gain').map((item) => item.control))];
       let toggleState = {};
       if (toggleNames.length) {
         toggleState = await this.#withReconnect(async (session) => {
@@ -138,7 +149,7 @@ export class FocusriteClient {
 
       const explicit = normalized.map((item) => ({
         control: item.control,
-        value: normalizeControlValue(item.control, item.action === 'toggle' ? !toggleState[item.control] : item.value),
+        value: normalizeControlValue(item.control, item.action === 'toggle' ? !toggleState[item.control] : item.value, this.gainRanges[item.control]),
       }));
 
       await this.#withReconnect(async (session) => {
@@ -150,6 +161,9 @@ export class FocusriteClient {
         const values = await this.#flush(session, affected.map((name) => this.#scheduleRead(session, name)), 'Control verification');
         return Object.fromEntries(affected.map((name, index) => [name, values[index]]));
       });
+      for (const [control, expected] of new Map(explicit.map(({ control, value }) => [control, value]))) {
+        if (verified[control] !== expected) throw new Error(`${control} verification failed: requested ${expected}, received ${verified[control]}.`);
+      }
       return { values: verified, applied: explicit.length };
     });
   }

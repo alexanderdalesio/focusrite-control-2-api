@@ -20,8 +20,14 @@ test('normalizes boolean values', () => {
 
 test('validates and rounds gain values to supported steps', () => {
   assert.equal(normalizeControlValue('monitor-gain', '-23.8'), -24);
+  assert.equal(publicControlDefinitions()['monitor-gain'].step, 1);
   assert.equal(normalizeControlValue('input1-gain', 28.26), 28.5);
   assert.throws(() => normalizeControlValue('input1-gain', 80), /0 to 69/);
+});
+
+test('live gain limits override fallback limits', () => {
+  assert.equal(normalizeControlValue('monitor-gain', -24, { min: -60, max: 0 }), -24);
+  assert.throws(() => normalizeControlValue('monitor-gain', 1, { min: -60, max: 0 }), /-60 to 0/);
 });
 
 test('does not expose device object numbers through the public schema', () => {

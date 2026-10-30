@@ -49,6 +49,16 @@ focusrite config set usbTimeout 10000
 
 Do not increase the timeout indefinitely. Repeated acknowledgement timeouts usually indicate interface ownership or an unsupported device/firmware combination.
 
+USB response matching tolerates a bounded number of older replies without resending commands. A response that cannot be matched invalidates the session and returns an error instead of a partial successful state. The API closes that session; the next read can reconnect. After a failed write, read the affected setting before retrying because a transport failure can leave its physical outcome uncertain.
+
+## Output level follows the hardware knob
+
+Per-output level changes are blocked while that output's `hardware-control` switch is on. Use `monitor-gain` for the main monitoring level, or explicitly disable the appropriate hardware-control switch before setting an independent output level. The dashboard disables those dials and explains why; it never takes ownership automatically.
+
+## Auto Gain targets or front-panel metering return FCP error 7
+
+On firmware v4.0.2827, `autogain-mean-target`, `autogain-peak-target`, `autogain-use-peak`, `autogain-maximum-gain`, and `metering-enabled` reject their advertised `dataNotify` events (`0x800002`). The map describing a field as writable does not guarantee that its notification works. No replacement event IDs or bypasses are guessed. These writes remain unsupported on that firmware; use FC2 for features it exposes and do not treat these controls as hardware-validated.
+
 ## LED colour control is unavailable
 
 Per-index RGB and gain-halo colour control is not supported on the tested Scarlett 16i16 4th Gen firmware. The device map contains an internal `setLED` command buffer and a maximum array-size constant, but those values do not describe user-addressable physical LEDs. Earlier builds incorrectly treated the constant as a physical LED count and could report success after the firmware merely retained the command buffer.

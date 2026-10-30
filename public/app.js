@@ -10,6 +10,7 @@ let polling = false;
 let definitionFingerprint = '';
 let developerFingerprint = '';
 let controlRevision = 0;
+let controlReadFailed = false;
 const initialUrl = new URL(window.location.href);
 const accessToken = initialUrl.searchParams.get('access_token') || sessionStorage.getItem('focusriteApiAccessToken') || '';
 if (initialUrl.searchParams.has('access_token')) {
@@ -141,7 +142,7 @@ function formatValue(name, value) {
 
 function createControl(name, definition, group) {
   const displayLabel = displayControlLabel(group, definition.label);
-  if (definition.kind === 'boolean') {
+  if (definition.kind === 'boolean' || definition.kind === 'mute') {
     const row = document.createElement('div');
     row.className = 'switchrow';
     const label = document.createElement('span');
@@ -252,12 +253,19 @@ function buildControls() {
 }
 
 function renderControls() {
+  const blocked = (name) => {
+    const definition = definitions[name];
+    return definition?.access === 'read-only'
+      || (definition?.disabledWhen && values[definition.disabledWhen.control] === definition.disabledWhen.value);
+  };
   $$('[data-toggle]').forEach((button) => {
-    const value = values[button.dataset.toggle];
+    const name = button.dataset.toggle;
+    const value = values[name];
     button.classList.toggle('on', value === true);
     button.setAttribute('aria-pressed', String(value === true));
     button.textContent = value === true ? 'ON' : 'OFF';
-    button.disabled = busy || value === undefined;
+    button.disabled = busy || value === undefined || blocked(name);
+    button.title = blocked(name) ? definitions[name].disabledReason || 'Read-only control' : '';
   });
   $$('[data-knob]').forEach((knob) => {
     const name = knob.dataset.knob;
@@ -265,12 +273,14 @@ function renderControls() {
     if (Number.isFinite(value) && !knob.classList.contains('dragging')) updateKnob(knob, name, value);
     const output = $(`[data-value="${name}"]`);
     if (output && Number.isFinite(value) && !knob.classList.contains('dragging')) output.textContent = formatValue(name, value);
-    knob.disabled = busy || !Number.isFinite(value) || definitions[name]?.access === 'read-only';
+    knob.disabled = busy || !Number.isFinite(value) || blocked(name);
+    knob.title = blocked(name) ? definitions[name].disabledReason || 'Read-only control' : '';
   });
   $$('[data-enum]').forEach((select) => {
     const name = select.dataset.enum;
     if (values[name] !== undefined && document.activeElement !== select) select.value = values[name];
-    select.disabled = busy || values[name] === undefined || definitions[name]?.access === 'read-only';
+    select.disabled = busy || values[name] === undefined || blocked(name);
+    select.title = blocked(name) ? definitions[name].disabledReason || 'Read-only control' : '';
   });
 }
 
@@ -425,15 +435,21 @@ async function refreshControls({ background = false } = {}) {
     showMessage('Reading controls…');
   }
   try {
-    const next = (await api('/api/v1/state')).values;
+    const result = await api('/api/v1/state');
+    const next = result.values;
     if (background && revision !== controlRevision) return;
     const changed = Object.keys(next).length !== Object.keys(values).length
       || Object.entries(next).some(([name, value]) => values[name] !== value);
     values = next;
     if (changed) renderControls();
-    if (!background) showMessage('Controls are connected.', 'good');
+    if (result.partial) showMessage(`Unavailable controls: ${Object.keys(result.unavailable).join(', ')}.`, 'bad');
+    else if (!background || controlReadFailed) showMessage('Controls are connected.', 'good');
+    controlReadFailed = Boolean(result.partial);
   } catch (error) {
-    if (!background) showMessage(error.message, 'bad');
+    controlReadFailed = true;
+    values = {};
+    renderControls();
+    showMessage(error.message, 'bad');
   } finally {
     if (!background) {
       busy = false;
@@ -492,7 +508,7 @@ async function poll() {
   polling = true;
   try {
     await refreshDevice();
-    if (Object.keys(values).length) await refreshControls({ background: true });
+    await refreshControls({ background: true });
     if (backend !== 'fc2') return;
     try {
       const { pairing } = await api('/api/v1/pair');

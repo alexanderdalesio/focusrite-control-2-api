@@ -74,7 +74,7 @@ const SOURCE_KINDS = Object.freeze({
   'phantom-power': { kind: 'boolean', label: 'Phantom power', shortAliases: ['phantom', '48v'] },
   instrument: { kind: 'boolean', label: 'Instrument mode', shortAliases: ['instrument', 'inst'] },
   'clip-safe': { kind: 'boolean', label: 'Clip Safe' },
-  'preamp-gain': { kind: 'integer', label: 'Preamp gain', min: 0, max: 70, step: 1, unit: 'dB' },
+  'preamp-gain': { kind: 'integer', label: 'Preamp gain', min: 0, max: 70, step: 1, unit: 'dB', shortAliases: ['gain'] },
   'auto-gain': { kind: 'boolean', label: 'Auto Gain' },
   'auto-gain-exit-status': { kind: 'enum', label: 'Auto Gain result', access: 'read-only', values: ['success', 'dynamic-range-over', 'minimum-gain', 'dynamic-range-under', 'maximum-gain', 'clipped', 'cancelled', 'root'] },
   'channel-link': { kind: 'boolean', label: 'Channel link' },
@@ -133,7 +133,15 @@ export function buildDirectControlDefinitions(deviceMap) {
       unit: 'dB',
     });
     if (members.outputMute) controls[`${base}-mute`] = definition('boolean', `${destination.name} mute`, 'outputMute', { index });
-    if (members.outputCtrl) controls[`${base}-hardware-control`] = definition('boolean', `${destination.name} hardware control`, 'outputCtrl', { index });
+    if (members.outputCtrl) {
+      const hardwareControl = `${base}-hardware-control`;
+      controls[hardwareControl] = definition('boolean', `${destination.name} hardware control`, 'outputCtrl', { index });
+      controls[`${base}-level`] = definition('integer', `${destination.name} level`, location.member, {
+        ...controls[`${base}-level`],
+        disabledWhen: { control: hardwareControl, value: true },
+        disabledReason: `Follows the hardware volume control. Disable ${hardwareControl} for independent software control.`,
+      });
+    }
   }
 
   const outputPairs = ['Monitor 1–2', 'Monitor 3–4', 'Headphone 1', 'Headphone 2'];

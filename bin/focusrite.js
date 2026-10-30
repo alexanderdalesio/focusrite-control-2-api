@@ -164,7 +164,9 @@ async function readState(names) {
       const result = await request(`/api/v1/control/${encodeURIComponent(names[0])}/get`);
       return { [result.control]: result.value };
     }
-    return (await request('/api/v1/state')).values;
+    const result = await request('/api/v1/state');
+    if (result.partial) throw new Error(`Incomplete control state: ${Object.keys(result.unavailable).join(', ')} unavailable.`);
+    return result.values;
   }
   const client = await configuredClient();
   try { return await client.read(names); } finally { await client.close(); }
@@ -633,7 +635,8 @@ async function main() {
     let connectionError = null;
     try {
       if (health) {
-        await request('/api/v1/state');
+        const state = await request('/api/v1/state');
+        if (state.partial) throw new Error(`Incomplete control state: ${Object.keys(state.unavailable).join(', ')} unavailable.`);
         device = (await request('/api/v1/device')).device;
       }
       else if (config.backend === 'usb' || (discovery.running && existsSync(KEY_PATH) && config.serverPublicKey)) {

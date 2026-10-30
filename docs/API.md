@@ -23,6 +23,12 @@ The selected method is persistent and shared by the CLI and dashboard. Ordinary 
 - `POST /api/v1/reconnect` — close and recreate the persistent communication session
 - `POST /api/v1/backend` — close the active transport, persist `fc2` or `usb`, and connect through the selected method
 
+Control definitions may include `disabledWhen: { "control": "monitor-1-hardware-control", "value": true }` and a `disabledReason`. Check the referenced value before enabling that control in a client. The server also enforces this condition before writing a batch.
+
+A device-rejected optional field is reported by `/api/v1/state` with `partial: true` and an `unavailable` object mapping control names to errors. Do not interpret a missing value as `false` or zero. USB transport failures instead return HTTP 503; the failed session is discarded so a later request can reconnect. Failed USB mutations are not silently replayed. The CLI treats partial full-state reads as errors, and the dashboard disables unavailable controls and displays the error.
+
+FC2 gain limits are read from the live AES70 response. Monitor gain uses whole-dB steps on the tested device; input preamp gain retains half-dB steps. Setters normalize values to the declared step and verify the resulting value rather than reporting an acknowledged but ineffective write as successful.
+
 Select a communication method:
 
 ```http

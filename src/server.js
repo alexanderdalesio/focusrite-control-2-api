@@ -11,6 +11,7 @@ import { discoverLocalPorts } from './discovery.js';
 import { outputStyle as style } from './terminal.js';
 import { searchDeviceMap } from './usb/device-map.js';
 import { authorizeApiRequest, isLoopback } from './http-security.js';
+import { isFcpTransportError } from './usb/fcp-protocol.js';
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const htmlPath = join(projectRoot, 'public', 'index.html');
@@ -209,8 +210,10 @@ const server = http.createServer(async (request, response) => {
       return;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/state') {
-      const values = await (await getClient()).read();
-      sendJson(response, 200, { ok: true, values });
+      const activeClient = await getClient();
+      const values = await activeClient.read();
+      const unavailable = Object.fromEntries(activeClient.unavailableControls ?? []);
+      sendJson(response, 200, { ok: true, values, ...(Object.keys(unavailable).length ? { partial: true, unavailable } : {}) });
       return;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/device') {
@@ -388,6 +391,11 @@ const server = http.createServer(async (request, response) => {
     }
     sendJson(response, 404, { ok: false, error: 'Not found.' });
   } catch (error) {
+    if (isFcpTransportError(error)) {
+      await closeClient().catch(() => {});
+      deviceInfoCache = null;
+      error.statusCode = 503;
+    }
     if (!error.statusCode) lastError = error.message;
     sendJson(response, error.statusCode ?? (/not paired|not open|ECONNREFUSED/i.test(error.message) ? 503 : 400), { ok: false, error: error.message });
   }
