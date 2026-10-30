@@ -452,7 +452,7 @@ async function runService(action = 'status', { quiet = false } = {}) {
       const { stdout } = await execFileAsync('launchctl', ['print', target]);
       const details = stdout.match(/state = .*|pid = .*/g)?.join('\n') ?? 'Installed';
       console.log(style.success(details));
-    } catch { console.log(style.warning('The Focusrite API service is not installed.')); }
+    } catch { console.log(style.warning(existsSync(plist) ? 'The Focusrite API service is installed but stopped.' : 'The Focusrite API service is not installed.')); }
     return;
   }
   throw new Error('Use service install, start, stop, restart, status, or uninstall.');
