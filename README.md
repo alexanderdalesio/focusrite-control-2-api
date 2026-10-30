@@ -34,7 +34,7 @@ Homebrew installs the `focusrite` command and its Node.js runtime dependency. Up
 
 Firmware update, flash erase/write, reboot, DFU, and factory-test commands are deliberately not implemented.
 
-On firmware v4.0.2827, mapped Auto Gain target/mode/maximum-gain settings and front-panel metering changes reject their USB notifications; those operations are not validated as working. Individual output levels follow their hardware-control switches, and the API/dashboard reject independent level changes while hardware control is enabled. Use the master monitor level or explicitly select software control first.
+Optional Auto Gain target/mode/maximum-gain and front-panel metering settings are checked against the connected device before writing. Firmware v4.0.2827 rejects their advertised USB notifications, so those controls remain readable but are marked read-only with an explanation; setters reject them before changing any field. Support is rechecked on reconnect instead of using a fixed firmware blacklist. Individual output levels follow their hardware-control switches; use the master monitor level or explicitly select software control before changing them independently.
 
 ## Stream Deck
 

@@ -36,7 +36,9 @@ Initialization performs step zero, opcode `0x000000`, then opcode `0x000002`. Ev
 
 The firmware supplies a compressed JSON device map. This project resolves control offsets, primitive widths, array indexes, limits, access policies, notification IDs, routing pins, mixer indexes, and meter indexes from that map instead of embedding firmware addresses. Controls whose type or index no longer matches the live map are omitted, and ranges are constrained to the device's current declaration. Device-rejected optional reads produce an explicitly partial snapshot; transport errors invalidate the entire snapshot and session. Older queued responses are drained within a bounded deadline without replaying writes.
 
-Not every mapped notification is implemented: Auto Gain target/mode/maximum-gain settings and front-panel metering notifications fail on firmware v4.0.2827. These remain known unsupported operations, not successful writes.
+Not every mapped notification is implemented: Auto Gain target/mode/maximum-gain settings and front-panel metering notifications fail on firmware v4.0.2827. The client checks this limited configuration-only set before offering writes, validates each event against its expected named enum member, caches support per control for the connection, and exposes rejected events as read-only. These checks apply current configuration values; they do not probe Auto Gain capture, flash/save, reset, reboot, LED, or factory events. Unrelated and transport errors are not treated as evidence that a field is unsupported.
+
+Ghidra inspection of FC2 v1.1210.0.0's `fcp::appspace::DeviceCommunications::notifyDevice` confirms category `0x800`, command `2`, and a four-byte event argument, matching this implementation's `0x800002` request. This is static evidence of the packet format, not evidence that every firmware implements every declared event. No alternative notification sequence was established for the rejected settings.
 
 Specialized FCP categories provide:
 

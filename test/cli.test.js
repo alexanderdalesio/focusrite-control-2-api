@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import http from 'node:http';
+import { readFile } from 'node:fs/promises';
 
 const run = promisify(execFile);
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -60,4 +62,26 @@ test('network status is disabled by default and never prints a token', async (t)
     env: { ...process.env, FOCUSRITE_DATA_DIR: dataDirectory },
   });
   assert.deepEqual(JSON.parse(stdout), { ok: true, enabled: false, urls: [] });
+});
+
+test('control lists clearly label firmware-rejected read-only settings', async (t) => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), 'focusrite-readonly-test-'));
+  t.after(() => rm(dataDirectory, { recursive: true, force: true }));
+  const version = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version;
+  const server = http.createServer((request, response) => {
+    response.setHeader('Content-Type', 'application/json');
+    const value = request.url === '/api/v1/health'
+      ? { ok: true, api: version, backend: 'fc2' }
+      : { controls: { 'metering-enabled': { kind: 'boolean', label: 'Front-panel metering', access: 'read-only' } } };
+    response.end(JSON.stringify(value));
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const { stdout } = await run(process.execPath, [cli, 'list'], {
+    env: { ...process.env, NO_COLOR: '1', FOCUSRITE_DATA_DIR: dataDirectory, FOCUSRITE_API_URL: `http://127.0.0.1:${server.address().port}` },
+  });
+  assert.match(stdout, /metering-enabled\s+boolean\s+Front-panel metering · read-only/);
 });

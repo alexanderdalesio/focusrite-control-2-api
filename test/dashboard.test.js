@@ -66,3 +66,17 @@ test('background read failure clears stale controls and the next successful poll
   assert.equal(messages.at(-1), 'Controls are connected.');
   assert.equal(context.controlReadFailed, false);
 });
+
+test('firmware-rejected optional switches are disabled and explain their read-only status', () => {
+  const button = new Element();
+  button.dataset.toggle = 'metering-enabled';
+  const context = {
+    definitions: { 'metering-enabled': { access: 'read-only', disabledReason: 'Device rejected notification 20.' } },
+    values: { 'metering-enabled': false }, busy: false,
+    $$: (selector) => selector === '[data-toggle]' ? [button] : [],
+  };
+  vm.createContext(context);
+  vm.runInContext(`${renderFunction}\nrenderControls()`, context);
+  assert.equal(button.disabled, true);
+  assert.equal(button.title, 'Device rejected notification 20.');
+});

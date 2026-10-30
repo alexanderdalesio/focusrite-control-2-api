@@ -374,6 +374,7 @@ export class DirectFocusriteClient {
     this.controls = null;
     this.controlReadWarnings = new Set();
     this.unavailableControls = new Map();
+    this.notificationCapabilities = new Map();
     this.queue = Promise.resolve();
     this.connectPromise = null;
   }
@@ -451,6 +452,7 @@ export class DirectFocusriteClient {
     this.controls = null;
     this.controlReadWarnings.clear();
     this.unavailableControls.clear();
+    this.notificationCapabilities.clear();
     try { if (device?.opened && interfaceNumber != null) await device.releaseInterface(); } catch {}
     try { if (device?.opened) await device.close(); } catch {}
   }
@@ -471,15 +473,17 @@ export class DirectFocusriteClient {
 
   async readDeviceMap() {
     await this.connect();
+    if (this.deviceMapPromise) return this.deviceMapPromise;
     if (this.deviceMap) return { encoded: null, map: this.deviceMap };
     if (!this.deviceMapPromise) {
-      this.deviceMapPromise = this.transport.readDeviceMap().then((result) => {
+      this.deviceMapPromise = this.transport.readDeviceMap().then(async (result) => {
         this.deviceMap = result.map;
         this.controls = buildDirectControlDefinitions(result.map);
         const skipped = directControlCompatibilityDiagnostics(this.controls);
         if (skipped.length) {
           console.warn(`Skipped ${skipped.length} incompatible device-map control${skipped.length === 1 ? '' : 's'}: ${skipped.map(({ control }) => control).join(', ')}`);
         }
+        await this.#inspectOptionalNotifications();
         return result;
       }).finally(() => { this.deviceMapPromise = null; });
     }
@@ -488,7 +492,56 @@ export class DirectFocusriteClient {
 
   async controlDefinitions() {
     await this.readDeviceMap();
-    return publicDirectControlDefinitions(this.controls);
+    const definitions = publicDirectControlDefinitions(this.controls);
+    for (const [name, item] of Object.entries(this.controls)) {
+      if (!item.probeNotification || item.access === 'read-only') continue;
+      const event = this.#notificationFor(item);
+      const capability = this.notificationCapabilities.get(name);
+      if (capability?.supported === false) {
+        definitions[name] = {
+          ...definitions[name],
+          access: 'read-only',
+          disabledReason: this.#notificationRejection(name, event, capability),
+          notificationSupport: { ...capability, event },
+        };
+      }
+    }
+    return definitions;
+  }
+
+  #notificationFor(item) {
+    const { member } = resolveMemberElement(this.deviceMap, item.path, item.index);
+    const event = Number(item.notify ?? member['notify-device'] ?? (item.save ? 6 : 0));
+    if (!Number.isInteger(event) || event < 0 || event > 0xffffffff) throw new RangeError(`Invalid notification for ${item.path}.`);
+    return event;
+  }
+
+  #notificationRejection(name, event, capability) {
+    const reason = capability.errorCode == null ? capability.reason : `the device rejected notification ${event} (FCP error ${capability.errorCode})`;
+    return `${name} is read-only on this connection: ${reason}. No setting was written. Reconnect after a firmware update to check again.`;
+  }
+
+  async #inspectOptionalNotifications() {
+    for (const [name, item] of Object.entries(this.controls)) {
+      if (!item.probeNotification || item.access === 'read-only') continue;
+      const event = this.#notificationFor(item);
+      if (this.notificationCapabilities.has(name)) continue;
+      const enumerators = this.deviceMap.enums?.eDEV_FCP_USER_MESSAGE_TYPE?.enumerators ?? {};
+      const declared = enumerators[item.probeNotification];
+      const matchingNames = Object.keys(enumerators).filter((key) => enumerators[key] === event);
+      if (!Number.isInteger(declared) || declared <= 0 || declared !== event || matchingNames.length !== 1) {
+        this.notificationCapabilities.set(name, { supported: false, reason: 'notification metadata does not identify the expected configuration event' });
+        continue;
+      }
+      try {
+        // These configuration notifications apply existing values; never probe capture, flash, reset, or LED events.
+        await this.transport.notify(event);
+        this.notificationCapabilities.set(name, { supported: true });
+      } catch (error) {
+        if (!(error instanceof FcpDeviceError) || error.opcode !== OPCODE.dataNotify) throw error;
+        this.notificationCapabilities.set(name, { supported: false, errorCode: error.code });
+      }
+    }
   }
 
   enqueue(operation) {
@@ -512,7 +565,7 @@ export class DirectFocusriteClient {
     const range = member.member.range;
     if (range && (value < range.min || value > range.max)) throw new RangeError(`${name} is outside the device range ${range.min} to ${range.max}.`);
     await this.transport.writeData(member.offset, encodePrimitive(member.type, item.kind === 'boolean' ? Number(value) : value));
-    const notification = Number(item.notify ?? member.member['notify-device'] ?? (item.save ? 6 : 0));
+    const notification = this.#notificationFor(item);
     if (notification) await this.transport.notify(notification);
   }
 
@@ -545,6 +598,12 @@ export class DirectFocusriteClient {
       const normalized = [];
       for (const operation of operations) {
         const control = normalizeDirectControlName(this.controls, operation.control);
+        const item = this.controls[control];
+        if (item.probeNotification) {
+          const event = this.#notificationFor(item);
+          const capability = this.notificationCapabilities.get(control);
+          if (capability?.supported === false) throw new Error(this.#notificationRejection(control, event, capability));
+        }
         let value = operation.value;
         if (operation.action === 'toggle') {
           if (this.controls[control].kind !== 'boolean') throw new TypeError(`${control} cannot be toggled.`);

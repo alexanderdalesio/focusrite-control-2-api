@@ -90,6 +90,11 @@ function printRows(rows) {
   for (const [name, value] of rows) console.log(`${style.accent(name.padEnd(width))}  ${value}`);
 }
 
+function describeControl(item) {
+  const access = item.access === 'read-only' ? style.label(' · read-only') : '';
+  return `${style.label(item.kind.padEnd(9))} ${item.label}${access}`;
+}
+
 function networkUrls(config) {
   const addresses = Object.values(networkInterfaces()).flat().filter((entry) => entry?.family === 'IPv4' && !entry.internal);
   return [...new Set(addresses.map(({ address }) => `http://${address}:${config.dashboardPort}`))];
@@ -256,7 +261,7 @@ async function runUsb(command = 'status', parameters = []) {
     const definitions = await client.controlDefinitions();
     if (command === 'list') {
       if (jsonOutput) console.log(JSON.stringify({ ok: true, backend: 'direct-fcp', controls: definitions }));
-      else printRows(Object.entries(definitions).map(([name, item]) => [name, `${style.label(item.kind.padEnd(9))} ${item.label}`]));
+      else printRows(Object.entries(definitions).map(([name, item]) => [name, describeControl(item)]));
       return;
     }
     if (command === 'status') { display({ values: await client.read() }, definitions); return; }
@@ -568,7 +573,7 @@ async function main() {
       try { definitions = await activeClient.controlDefinitions(); } finally { await activeClient.close(); }
     }
     if (jsonOutput) { console.log(JSON.stringify({ controls: definitions })); return; }
-    printRows(Object.entries(definitions).map(([name, definition]) => [name, `${style.label(definition.kind.padEnd(9))} ${definition.label}`]));
+    printRows(Object.entries(definitions).map(([name, definition]) => [name, describeControl(definition)]));
     return;
   }
   if (command === 'status') { display({ values: await readState() }); return; }

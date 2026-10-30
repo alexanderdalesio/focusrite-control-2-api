@@ -57,7 +57,11 @@ Per-output level changes are blocked while that output's `hardware-control` swit
 
 ## Auto Gain targets or front-panel metering return FCP error 7
 
-On firmware v4.0.2827, `autogain-mean-target`, `autogain-peak-target`, `autogain-use-peak`, `autogain-maximum-gain`, and `metering-enabled` reject their advertised `dataNotify` events (`0x800002`). The map describing a field as writable does not guarantee that its notification works. No replacement event IDs or bypasses are guessed. These writes remain unsupported on that firmware; use FC2 for features it exposes and do not treat these controls as hardware-validated.
+On firmware v4.0.2827, `autogain-mean-target`, `autogain-peak-target`, `autogain-use-peak`, `autogain-maximum-gain`, and `metering-enabled` reject their advertised `dataNotify` events (`0x800002`). A writable field in the map does not guarantee that its notification works.
+
+The USB client now checks only these configuration notifications against their current values, without writing settings or starting Auto Gain. Rejected or ambiguous events make the affected controls read-only for that connection. The CLI lists them as read-only; API definitions include `disabledReason` and `notificationSupport`; the dashboard disables their widgets and shows the reason in a tooltip. A setter or batch containing one is rejected before any data write, avoiding misleading rollback failures.
+
+No replacement event IDs, raw-write bypasses, or version-based exclusions are guessed. Reconnect after a firmware update to check capabilities again. A transport error during the check is still a connection failure, not a reason to silently disable controls.
 
 ## LED colour control is unavailable
 

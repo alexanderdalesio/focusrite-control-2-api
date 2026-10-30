@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.2 - 2026-10-30
+
+- Checked optional Auto Gain configuration and front-panel metering notification support before writing settings; rejected events now expose read-only controls with actionable reasons instead of failed write/rollback cycles.
+- Validated notification identities against their named device-map enums, limited checks to configuration-only events, and cached results per control until reconnect. New firmware is rechecked without a version blacklist.
+- Prevented concurrent discovery from exposing controls before capability checks finish, and kept transport failures distinct from unsupported optional settings.
+- Labeled read-only controls in CLI output and documented API capability metadata and dashboard behavior.
+- Verified all five rejected controls on two fresh USB connections with zero data writes, no audio playback, and all 65 original values preserved.
+
 ## 0.4.1 - 2026-10-29
 
 - Matched stale USB replies within a bounded deadline without retransmitting writes; unrecoverable transport failures now invalidate the session and return HTTP 503.
