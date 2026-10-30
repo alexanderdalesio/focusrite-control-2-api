@@ -566,7 +566,17 @@ export class DirectFocusriteClient {
     if (range && (value < range.min || value > range.max)) throw new RangeError(`${name} is outside the device range ${range.min} to ${range.max}.`);
     await this.transport.writeData(member.offset, encodePrimitive(member.type, item.kind === 'boolean' ? Number(value) : value));
     const notification = this.#notificationFor(item);
-    if (notification) await this.transport.notify(notification);
+    if (notification) {
+      try { await this.transport.notify(notification); }
+      catch (error) {
+        const enumerators = this.deviceMap.enums?.eDEV_FCP_USER_MESSAGE_TYPE?.enumerators ?? {};
+        const declared = enumerators[item.optionalNotification];
+        const matches = Object.values(enumerators).filter((event) => event === notification).length;
+        // FC2 keeps these target writes when their notification returns 7. apply() still verifies the stored value.
+        if (!item.optionalNotification || declared !== notification || matches !== 1 || !(error instanceof FcpDeviceError)
+          || error.opcode !== OPCODE.dataNotify || error.code !== 7) throw error;
+      }
+    }
   }
 
   read(names) {

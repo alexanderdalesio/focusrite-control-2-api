@@ -61,11 +61,11 @@ const GLOBAL_CONTROLS = Object.freeze({
   'output-switch': definition('boolean', 'Output switch', 'outputSwitch', { notify: 33 }),
   'output-relay-mute': definition('boolean', 'Output relay mute', 'outputRelayMute', { notify: 1 }),
   'alt-talkback-enabled': definition('boolean', 'Alternate-monitor talkback enabled', 'altMonitorTalkbackEnable', { notify: 9 }),
-  'autogain-mean-target': definition('integer', 'Auto Gain mean target', 'meanTargetNegDBFS', { min: 0, max: 69, step: 1, unit: 'dB below full scale', probeNotification: 'eMSG_AG_MEAN_TARGET' }),
-  'autogain-peak-target': definition('integer', 'Auto Gain peak target', 'peakTargetNegDBFS', { min: 0, max: 69, step: 1, unit: 'dB below full scale', probeNotification: 'eMSG_AG_PEAK_TARGET' }),
+  'autogain-mean-target': definition('integer', 'Auto Gain mean target', 'meanTargetNegDBFS', { min: 0, max: 69, step: 1, unit: 'dB below full scale', optionalNotification: 'eMSG_AG_MEAN_TARGET' }),
+  'autogain-peak-target': definition('integer', 'Auto Gain peak target', 'peakTargetNegDBFS', { min: 0, max: 69, step: 1, unit: 'dB below full scale', optionalNotification: 'eMSG_AG_PEAK_TARGET' }),
   'autogain-use-peak': definition('boolean', 'Auto Gain uses peak target', 'autogainUsePeak', { probeNotification: 'eMSG_AUTOGAIN_PEAKS' }),
   'autogain-maximum-gain': definition('integer', 'Auto Gain maximum gain', 'autogainSetMaxGain', { min: 1, max: 70, step: 1, unit: 'dB', probeNotification: 'eMSG_AUTOGAIN_MAX_GAIN' }),
-  'metering-enabled': definition('boolean', 'Front-panel metering', 'meteringEnabled', { probeNotification: 'eMSG_METERING' }),
+  'metering-enabled': definition('boolean', 'Device-map metering flag', 'meteringEnabled', { probeNotification: 'eMSG_METERING' }),
   'adat-expansion-mode': definition('boolean', 'ADAT expansion mode', 'adatExpansionMode', { save: true }),
 });
 
@@ -194,5 +194,5 @@ export function normalizeDirectControlValue(definitions, name, value) {
 }
 
 export function publicDirectControlDefinitions(definitions) {
-  return Object.fromEntries(Object.entries(definitions).map(([name, { path: _path, index: _index, save: _save, notify: _notify, probeNotification: _probe, ...item }]) => [name, item]));
+  return Object.fromEntries(Object.entries(definitions).map(([name, { path: _path, index: _index, save: _save, notify: _notify, probeNotification: _probe, optionalNotification: _optional, ...item }]) => [name, item]));
 }

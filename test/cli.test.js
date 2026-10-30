@@ -72,7 +72,7 @@ test('control lists clearly label firmware-rejected read-only settings', async (
     response.setHeader('Content-Type', 'application/json');
     const value = request.url === '/api/v1/health'
       ? { ok: true, api: version, backend: 'fc2' }
-      : { controls: { 'metering-enabled': { kind: 'boolean', label: 'Front-panel metering', access: 'read-only' } } };
+      : { controls: { 'metering-enabled': { kind: 'boolean', label: 'Device-map metering flag', access: 'read-only' } } };
     response.end(JSON.stringify(value));
   });
   await new Promise((resolve, reject) => {
@@ -83,5 +83,5 @@ test('control lists clearly label firmware-rejected read-only settings', async (
   const { stdout } = await run(process.execPath, [cli, 'list'], {
     env: { ...process.env, NO_COLOR: '1', FOCUSRITE_DATA_DIR: dataDirectory, FOCUSRITE_API_URL: `http://127.0.0.1:${server.address().port}` },
   });
-  assert.match(stdout, /metering-enabled\s+boolean\s+Front-panel metering · read-only/);
+  assert.match(stdout, /metering-enabled\s+boolean\s+Device-map metering flag · read-only/);
 });
