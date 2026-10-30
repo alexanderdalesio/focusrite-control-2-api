@@ -6,6 +6,7 @@ Real-hardware validation currently covers:
 
 - Focusrite Control 2 v1.1081.0.0
 - Scarlett 16i16 4th Gen firmware v3.0.2778.0 (FCP build 2778)
+- Scarlett 16i16 4th Gen firmware v4.0.2827.0 (FCP build 2827)
 - macOS
 
 The hardware-free suite runs on macOS, Linux, and Windows. Treat direct control on other devices and platforms as experimental until it is verified.
@@ -32,7 +33,7 @@ u32 opcode | u16 payload size | u16 sequence | u32 error | u32 padding
 
 Initialization performs step zero, opcode `0x000000`, then opcode `0x000002`. Every later command is matched by opcode and sequence; response size and device error status are validated.
 
-The firmware supplies a compressed JSON device map. This project resolves control offsets, primitive widths, array indexes, limits, access policies, notification IDs, routing pins, mixer indexes, and meter indexes from that map instead of embedding firmware addresses.
+The firmware supplies a compressed JSON device map. This project resolves control offsets, primitive widths, array indexes, limits, access policies, notification IDs, routing pins, mixer indexes, and meter indexes from that map instead of embedding firmware addresses. Controls whose type or index no longer matches the live map are omitted, and ranges are constrained to the device's current declaration. A failed optional control read is isolated from full-state refreshes so unrelated controls remain available.
 
 Specialized FCP categories provide:
 

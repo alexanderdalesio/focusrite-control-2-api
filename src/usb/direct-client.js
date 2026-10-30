@@ -2,6 +2,7 @@ import { usb as legacyUsb } from 'usb';
 import { decodeDeviceMap, decodePrimitive, encodePrimitive, resolveMember, resolveMemberElement } from './device-map.js';
 import {
   buildDirectControlDefinitions,
+  directControlCompatibilityDiagnostics,
   normalizeDirectControlName,
   normalizeDirectControlValue,
   publicDirectControlDefinitions,
@@ -347,6 +348,7 @@ export class DirectFocusriteClient {
     this.deviceMap = null;
     this.deviceMapPromise = null;
     this.controls = null;
+    this.controlReadWarnings = new Set();
     this.queue = Promise.resolve();
     this.connectPromise = null;
   }
@@ -421,6 +423,7 @@ export class DirectFocusriteClient {
     this.deviceMap = null;
     this.deviceMapPromise = null;
     this.controls = null;
+    this.controlReadWarnings.clear();
     try { if (device?.opened && interfaceNumber != null) await device.releaseInterface(); } catch {}
     try { if (device?.opened) await device.close(); } catch {}
   }
@@ -446,6 +449,10 @@ export class DirectFocusriteClient {
       this.deviceMapPromise = this.transport.readDeviceMap().then((result) => {
         this.deviceMap = result.map;
         this.controls = buildDirectControlDefinitions(result.map);
+        const skipped = directControlCompatibilityDiagnostics(this.controls);
+        if (skipped.length) {
+          console.warn(`Skipped ${skipped.length} incompatible device-map control${skipped.length === 1 ? '' : 's'}: ${skipped.map(({ control }) => control).join(', ')}`);
+        }
         return result;
       }).finally(() => { this.deviceMapPromise = null; });
     }
@@ -487,7 +494,17 @@ export class DirectFocusriteClient {
       await this.readDeviceMap();
       const selected = names?.length ? names.map((name) => normalizeDirectControlName(this.controls, name)) : Object.keys(this.controls);
       const entries = [];
-      for (const name of selected) entries.push([name, await this.#readControl(name)]);
+      for (const name of selected) {
+        try {
+          entries.push([name, await this.#readControl(name)]);
+        } catch (error) {
+          if (names?.length) throw error;
+          if (!this.controlReadWarnings.has(name)) {
+            this.controlReadWarnings.add(name);
+            console.warn(`Skipping unreadable device-map control ${name}: ${error.message}`);
+          }
+        }
+      }
       return Object.fromEntries(entries);
     });
   }

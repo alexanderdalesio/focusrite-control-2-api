@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDirectControlDefinitions, normalizeDirectControlName, normalizeDirectControlValue } from '../src/usb/direct-controls.js';
+import { buildDirectControlDefinitions, directControlCompatibilityDiagnostics, normalizeDirectControlName, normalizeDirectControlValue } from '../src/usb/direct-controls.js';
 import { decodePrimitive, encodePrimitive, resolveMemberElement } from '../src/usb/device-map.js';
 
 const map = {
@@ -49,4 +49,50 @@ test('resolves array elements and encodes signed values', () => {
   assert.equal(resolveMemberElement(map, 'outputVol', 1).offset, 22);
   assert.equal(decodePrimitive('int16', encodePrimitive('int16', -24)), -24);
   assert.throws(() => resolveMemberElement(map, 'inputAir', 2), /outside dimension/);
+});
+
+test('does not synthesize controls beyond firmware-reported array dimensions', () => {
+  const firmware4Map = structuredClone(map);
+  Object.assign(firmware4Map.structs.APP_SPACE.members, {
+    inputMutes: { type: 'uint8', offset: 30, size: 2, 'array-shape': [2] },
+    outputMute: { type: 'uint8', offset: 32, size: 1, 'array-shape': [1] },
+    outputCtrl: { type: 'uint8', offset: 33, size: 1, 'array-shape': [1] },
+    outputMono: { type: 'uint8', offset: 34, size: 2, 'array-shape': [2] },
+  });
+  for (let input = 3; input <= 6; input += 1) {
+    firmware4Map['device-specification'].sources.push({
+      name: `Analogue ${input}`,
+      type: 'analogue',
+      controls: { unsupported: { struct: 'APP_SPACE', member: 'inputAir', index: 0 } },
+    });
+  }
+
+  const controls = buildDirectControlDefinitions(firmware4Map);
+  assert.ok(controls['input1-mute']);
+  assert.ok(controls['input2-mute']);
+  assert.equal(controls['input3-mute'], undefined);
+  assert.equal(controls['input6-mute'], undefined);
+  assert.ok(controls['monitor-1-mute']);
+  assert.equal(controls['monitor-2-mute'], undefined);
+  assert.ok(controls['monitor-1-hardware-control']);
+  assert.equal(controls['monitor-2-hardware-control'], undefined);
+  assert.ok(controls['monitor-1-2-mono']);
+  assert.ok(controls['monitor-3-4-mono']);
+  assert.equal(controls['headphone-1-mono'], undefined);
+});
+
+test('filters malformed controls and adapts ranges to the live device map', () => {
+  const changedMap = structuredClone(map);
+  changedMap.structs.APP_SPACE.members.inputAir.range = { min: 0, max: 1 };
+  changedMap.structs.APP_SPACE.members.outputVol.range = { min: -40, max: -10 };
+  changedMap['device-specification'].sources[1].controls.air.index = 5;
+
+  const controls = buildDirectControlDefinitions(changedMap);
+  assert.deepEqual(controls['input1-air'].values, ['off', 'presence']);
+  assert.equal(controls['input2-air'], undefined);
+  assert.equal(controls['monitor-1-level'].min, -40);
+  assert.equal(controls['monitor-1-level'].max, -10);
+  assert.deepEqual(directControlCompatibilityDiagnostics(controls), [
+    { control: 'input2-air', reason: 'inputAir index 5 is outside dimension 2.' },
+  ]);
 });

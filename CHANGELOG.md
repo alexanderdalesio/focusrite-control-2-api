@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 - 2026-10-29
+
+- Added hardware validation for every device-map-derived control before it is exposed to the CLI, API, or dashboard.
+- Adapted numeric and enum controls to firmware-reported ranges and access policies instead of assuming the original map shape.
+- Limited synthesized mute, hardware-control, and mono controls to their live array dimensions.
+- Isolated unreadable controls during full-state refreshes so one changed firmware field cannot take down the dashboard or API.
+- Added compatibility warnings for skipped controls and verified direct USB operation on Scarlett firmware v4.0.2827.0.
+
 ## 0.3.1 - 2026-09-08
 
 - Added consistent direct-USB aliases for phantom power and instrument mode, including the shorter names already accepted by the FC2 backend.

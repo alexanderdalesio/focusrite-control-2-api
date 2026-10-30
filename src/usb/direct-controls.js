@@ -1,9 +1,50 @@
+import { resolveMemberElement } from './device-map.js';
+
 function slug(value) {
   return String(value).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
 function definition(kind, label, path, extra = {}) {
   return Object.freeze({ kind, label, path, aliases: Object.freeze(extra.aliases ?? []), ...extra });
+}
+
+function compatibleDefinitions(deviceMap, candidates) {
+  const controls = {};
+  const skipped = [];
+
+  for (const [name, item] of Object.entries(candidates)) {
+    try {
+      const resolved = resolveMemberElement(deviceMap, item.path, item.index);
+      const memberRange = resolved.member.range;
+      const next = { ...item, aliases: Object.freeze([...(item.aliases ?? [])]) };
+      const access = String(resolved.member['access-policy'] ?? '').toLowerCase();
+      if (/read.?only/u.test(access)) next.access = 'read-only';
+
+      if (item.kind === 'integer' && memberRange) {
+        next.min = Math.max(Number(item.min ?? memberRange.min), Number(memberRange.min));
+        next.max = Math.min(Number(item.max ?? memberRange.max), Number(memberRange.max));
+        if (!Number.isFinite(next.min) || !Number.isFinite(next.max) || next.min > next.max) {
+          throw new Error(`declared range does not overlap device range ${memberRange.min} to ${memberRange.max}`);
+        }
+      } else if (item.kind === 'enum' && memberRange && Number(memberRange.min) === 0) {
+        const count = Math.min(item.values.length, Number(memberRange.max) + 1);
+        if (count < 1) throw new Error('device range contains no supported enum values');
+        next.values = Object.freeze(item.values.slice(0, count));
+      } else if (item.kind === 'boolean' && memberRange) {
+        if (Number(memberRange.min) > 0 || Number(memberRange.max) < 1) throw new Error('device range cannot represent both boolean states');
+      }
+
+      controls[name] = Object.freeze(next);
+    } catch (error) {
+      skipped.push(Object.freeze({ control: name, reason: error.message }));
+    }
+  }
+
+  Object.defineProperty(controls, 'compatibilityDiagnostics', {
+    value: Object.freeze(skipped),
+    enumerable: false,
+  });
+  return Object.freeze(controls);
 }
 
 const GLOBAL_CONTROLS = Object.freeze({
@@ -103,7 +144,11 @@ export function buildDirectControlDefinitions(deviceMap) {
     }
   }
 
-  return Object.freeze(controls);
+  return compatibleDefinitions(deviceMap, controls);
+}
+
+export function directControlCompatibilityDiagnostics(definitions) {
+  return definitions?.compatibilityDiagnostics ?? Object.freeze([]);
 }
 
 export function directControlAliases(definitions) {

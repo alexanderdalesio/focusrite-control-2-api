@@ -23,7 +23,7 @@ body:
     id: device
     attributes:
       label: Device and firmware
-      placeholder: Scarlett 16i16 4th Gen, firmware 3.0.2778.0
+      placeholder: Scarlett 16i16 4th Gen, firmware 4.0.2827.0
     validations:
       required: true
   - type: textarea
