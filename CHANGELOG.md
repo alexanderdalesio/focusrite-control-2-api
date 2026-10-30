@@ -2,11 +2,12 @@
 
 ## 0.4.2 - 2026-10-30
 
-- Checked optional Auto Gain configuration and front-panel metering notification support before writing settings; rejected events now expose read-only controls with actionable reasons instead of failed write/rollback cycles.
-- Validated notification identities against their named device-map enums, limited checks to configuration-only events, and cached results per control until reconnect. New firmware is rechecked without a version blacklist.
-- Prevented concurrent discovery from exposing controls before capability checks finish, and kept transport failures distinct from unsupported optional settings.
-- Labeled read-only controls in CLI output and documented API capability metadata and dashboard behavior.
-- Verified all five rejected controls on two fresh USB connections with zero data writes, no audio playback, and all 65 original values preserved.
+- Fixed Auto Gain configuration writes being rolled back on notification status 7. The scoped policy follows FC2's generic AppSpace behavior, requires a uniquely named event, verifies stored values, and preserves the rejected notification as a structured warning. Other write, transport, notification, and readback failures still fail normally.
+- Made the undocumented peak-mode and maximum-gain settings writable with explicit experimental labels and warnings. Stored values and compatibility with silent native captures are tested; their DSP effects have not been measured with an audio signal.
+- Corrected `metering-enabled` to use the separate ESP32 meter-feed field and its mapped notification, added the `front-panel-metering` alias, and left independent USB peak reads available while that feed is disabled. The unrelated legacy flag is no longer advertised as a front-panel control.
+- Validated notification metadata before batch writes and retained connection-scoped capability checks for the meter feed, including concurrent discovery, reconnect, and transport-failure handling.
+- Preserved warnings through single-control API actions, batches, readable CLI output, machine-safe JSON, and dashboard controls. Added experimental tooltips and amber warnings without disabling verified stored-setting writes.
+- Passed 65 automated tests and 18 final live API/CLI checks, plus dashboard changes and restoration for all three remaining controls. Silent Auto Gain captures completed on both inputs; no playback or test tones were generated, and all original writable settings and the meter feed were restored.
 
 ## 0.4.1 - 2026-10-29
 
