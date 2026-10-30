@@ -120,10 +120,24 @@ test('USB peak reads work with the device-map metering flag cleared', async () =
   assert.deepEqual(writes, []);
 });
 
+test('metering uses the ESP32 feed field and leaves the legacy flag untouched', async () => {
+  const deviceMap = structuredClone(map);
+  Object.assign(deviceMap.structs.APP_SPACE.members, {
+    meteringEnabled: { type: 'uint8', offset: 28, size: 1, 'notify-device': 20 },
+    meterDataToESP32: { type: 'uint8', offset: 29, size: 1, 'notify-device': 27 },
+  });
+  const { client, memory, writes } = simulatedClient(deviceMap, { 28: 0, 29: 1 });
+  const notifications = [];
+  client.transport.notify = async (event) => { notifications.push(event); };
+  assert.deepEqual(await client.read(['metering-enabled']), { 'metering-enabled': true });
+  assert.deepEqual(await client.apply([{ control: 'front-panel-metering', value: false }]), { applied: 1, values: { 'metering-enabled': false } });
+  assert.deepEqual(writes, [29]);
+  assert.deepEqual(notifications, [27]);
+  assert.equal(memory.get(28), 0);
+});
+
 const optionalFields = {
-  'autogain-use-peak': ['autogainUsePeak', 32, 35, 'eMSG_AUTOGAIN_PEAKS', 0],
-  'autogain-maximum-gain': ['autogainSetMaxGain', 33, 34, 'eMSG_AUTOGAIN_MAX_GAIN', 52],
-  'metering-enabled': ['meteringEnabled', 34, 20, 'eMSG_METERING', 0],
+  'metering-enabled': ['meterDataToESP32', 34, 27, 'eMSG_ENABLE_METERING', 0],
 };
 
 function optionalClient({ reject = false, fields = optionalFields } = {}) {
@@ -181,7 +195,7 @@ test('target notifications cannot hide write errors, transport failures, or mism
     if (mode === 'transport') client.transport.notify = async () => { throw new FcpTransportError('Transport lost'); };
     if (mode === 'metadata') deviceMap.enums.eDEV_FCP_USER_MESSAGE_TYPE.enumerators.eMSG_AG_MEAN_TARGET = 99;
     if (mode === 'alias') deviceMap.enums.eDEV_FCP_USER_MESSAGE_TYPE.enumerators.eMSG_RESET = 36;
-    await assert.rejects(client.apply([{ control: 'autogain-mean-target', value: 12 }]), mode === 'transport' ? /Transport lost/ : /FCP error 7/);
+    await assert.rejects(client.apply([{ control: 'autogain-mean-target', value: 12 }]), mode === 'transport' ? /Transport lost/ : ['metadata', 'alias'].includes(mode) ? /metadata/ : /FCP error 7/);
   }
 });
 
@@ -204,71 +218,97 @@ test('a later target batch failure restores both original fields', async () => {
   assert.equal(memory.get(31), 12);
 });
 
+test('undocumented Auto Gain settings allow verified writes with explicit experimental warnings', async () => {
+  const fields = {
+    'autogain-use-peak': ['autogainUsePeak', 32, 35, 'eMSG_AUTOGAIN_PEAKS', 0],
+    'autogain-maximum-gain': ['autogainSetMaxGain', 33, 34, 'eMSG_AUTOGAIN_MAX_GAIN', 52],
+  };
+  for (const reject of [false, true]) {
+    const { client, notifications } = optionalClient({ reject, fields });
+    const definitions = await client.controlDefinitions();
+    assert.equal(definitions['autogain-use-peak'].experimental, true);
+    assert.equal(definitions['autogain-maximum-gain'].experimental, true);
+    assert.deepEqual(notifications, []);
+    const result = await client.apply([{ control: 'autogain-use-peak', value: true }, { control: 'autogain-maximum-gain', value: 51 }]);
+    assert.deepEqual(result.values, { 'autogain-use-peak': true, 'autogain-maximum-gain': 51 });
+    assert.equal(result.warnings.length, 2);
+    assert(result.warnings.every(({ verification, message }) => verification === 'stored-value' && /experimental/.test(message)));
+    if (reject) assert(result.warnings.every(({ status, code }) => status === 7 && code === 'notification-rejected'));
+  }
+});
+
+test('a missing expected configuration enum blocks writes before a batch starts', async () => {
+  const { client, deviceMap, writes } = optionalClient({ fields: targetFields });
+  delete deviceMap.enums.eDEV_FCP_USER_MESSAGE_TYPE.enumerators.eMSG_AG_MEAN_TARGET;
+  await assert.rejects(client.apply([{ control: 'dim', value: true }, { control: 'autogain-mean-target', value: 12 }]), /metadata/);
+  assert.deepEqual(writes, []);
+});
+
 test('rejected optional notifications make controls read-only before any data writes', async () => {
   const { client, notifications, writes } = optionalClient({ reject: true });
   const definitions = await client.controlDefinitions();
-  assert.deepEqual(notifications, [35, 34, 20]);
+  assert.deepEqual(notifications, [27]);
   for (const name of Object.keys(optionalFields)) {
     assert.equal(definitions[name].access, 'read-only');
     assert.equal(definitions[name].notificationSupport.errorCode, 7);
     assert.match(definitions[name].disabledReason, /No setting was written/);
     assert.equal('probeNotification' in definitions[name], false);
   }
-  await assert.rejects(client.apply([{ control: 'dim', value: true }, { control: 'autogain-maximum-gain', value: 51 }]), /read-only on this connection/);
+  await assert.rejects(client.apply([{ control: 'dim', value: true }, { control: 'metering-enabled', value: true }]), /read-only on this connection/);
   assert.deepEqual(writes, []);
-  assert.equal((await client.read())['autogain-maximum-gain'], 52);
+  assert.equal((await client.read())['metering-enabled'], false);
   await client.controlDefinitions();
-  assert.equal(notifications.length, 3);
+  assert.equal(notifications.length, 1);
 });
 
 test('firmware that accepts an optional event retains writable controls', async () => {
   const { client, memory, writes } = optionalClient();
-  assert.notEqual((await client.controlDefinitions())['autogain-maximum-gain'].access, 'read-only');
-  assert.deepEqual(await client.apply([{ control: 'autogain-maximum-gain', value: 51 }]), { applied: 1, values: { 'autogain-maximum-gain': 51 } });
-  assert.deepEqual(writes, [33]);
-  assert.equal(memory.get(33), 51);
+  assert.notEqual((await client.controlDefinitions())['metering-enabled'].access, 'read-only');
+  assert.deepEqual(await client.apply([{ control: 'metering-enabled', value: true }]), { applied: 1, values: { 'metering-enabled': true } });
+  assert.deepEqual(writes, [34]);
+  assert.equal(memory.get(34), 1);
 });
 
 test('unsafe or ambiguous notification metadata is never probed', async () => {
-  const fields = { 'autogain-maximum-gain': optionalFields['autogain-maximum-gain'] };
+  const fields = optionalFields;
   const { client, deviceMap, notifications, writes } = optionalClient({ fields });
-  deviceMap.structs.APP_SPACE.members.autogainSetMaxGain['notify-device'] = 13;
-  const definition = (await client.controlDefinitions())['autogain-maximum-gain'];
+  deviceMap.structs.APP_SPACE.members.meterDataToESP32['notify-device'] = 13;
+  const definition = (await client.controlDefinitions())['metering-enabled'];
   assert.equal(definition.access, 'read-only');
   assert.match(definition.disabledReason, /metadata/);
   assert.deepEqual(notifications, []);
-  await assert.rejects(client.apply([{ control: 'autogain-maximum-gain', value: 51 }]), /metadata/);
+  await assert.rejects(client.apply([{ control: 'metering-enabled', value: true }]), /metadata/);
   assert.deepEqual(writes, []);
 });
 
-test('one malformed field cannot reuse another field\'s supported notification result', async () => {
+test('a malformed data-backed field fails a batch before earlier writes', async () => {
   const fields = {
-    'autogain-maximum-gain': optionalFields['autogain-maximum-gain'],
-    'autogain-use-peak': optionalFields['autogain-use-peak'],
+    'autogain-maximum-gain': ['autogainSetMaxGain', 33, 34, 'eMSG_AUTOGAIN_MAX_GAIN', 52],
+    'autogain-use-peak': ['autogainUsePeak', 32, 35, 'eMSG_AUTOGAIN_PEAKS', 0],
   };
   const { client, deviceMap, notifications, writes } = optionalClient({ fields });
   deviceMap.structs.APP_SPACE.members.autogainUsePeak['notify-device'] = 34;
   const definitions = await client.controlDefinitions();
   assert.notEqual(definitions['autogain-maximum-gain'].access, 'read-only');
   assert.equal(definitions['autogain-use-peak'].access, 'read-only');
-  assert.deepEqual(notifications, [34]);
-  await assert.rejects(client.apply([{ control: 'autogain-use-peak', value: true }]), /metadata/);
+  assert.deepEqual(notifications, []);
+  await assert.rejects(client.apply([{ control: 'dim', value: true }, { control: 'autogain-use-peak', value: true }]), /metadata/);
   assert.deepEqual(writes, []);
 });
 
 test('an event that aliases a capture or reset enum is not safe to probe', async () => {
-  const fields = { 'autogain-maximum-gain': optionalFields['autogain-maximum-gain'] };
+  const fields = optionalFields;
   const { client, deviceMap, notifications } = optionalClient({ fields });
-  deviceMap.enums.eDEV_FCP_USER_MESSAGE_TYPE.enumerators.eMSG_RESET = 34;
-  assert.equal((await client.controlDefinitions())['autogain-maximum-gain'].access, 'read-only');
+  deviceMap.enums.eDEV_FCP_USER_MESSAGE_TYPE.enumerators.eMSG_RESET = 27;
+  assert.equal((await client.controlDefinitions())['metering-enabled'].access, 'read-only');
   assert.deepEqual(notifications, []);
 });
 
 test('read-only firmware fields do not need a notification probe', async () => {
-  const fields = { 'autogain-maximum-gain': optionalFields['autogain-maximum-gain'] };
+  const fields = optionalFields;
   const { client, deviceMap, notifications } = optionalClient({ fields });
-  deviceMap.structs.APP_SPACE.members.autogainSetMaxGain['access-policy'] = 'read-only';
-  assert.equal((await client.controlDefinitions())['autogain-maximum-gain'].access, 'read-only');
+  deviceMap.structs.APP_SPACE.members.meterDataToESP32['access-policy'] = 'read-only';
+  assert.equal((await client.controlDefinitions())['metering-enabled'].access, 'read-only');
   assert.deepEqual(notifications, []);
 });
 
@@ -282,7 +322,7 @@ test('concurrent discovery waits for the single notification-capability check', 
 test('closing a connection discards its optional notification capability results', async () => {
   const { client } = optionalClient({ reject: true });
   await client.controlDefinitions();
-  assert.equal(client.notificationCapabilities.size, 3);
+  assert.equal(client.notificationCapabilities.size, 1);
   await client.close();
   assert.equal(client.notificationCapabilities.size, 0);
   assert.equal(client.deviceMap, null);

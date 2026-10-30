@@ -92,7 +92,8 @@ function printRows(rows) {
 
 function describeControl(item) {
   const access = item.access === 'read-only' ? style.label(' · read-only') : '';
-  return `${style.label(item.kind.padEnd(9))} ${item.label}${access}`;
+  const experimental = item.experimental ? style.warning(' · experimental') : '';
+  return `${style.label(item.kind.padEnd(9))} ${item.label}${access}${experimental}`;
 }
 
 function networkUrls(config) {
@@ -200,6 +201,7 @@ function display(result, definitions = CONTROLS) {
     return [name, formatted];
   });
   printRows(rows);
+  for (const warning of result.warnings ?? []) console.error(style.warning(`Warning: ${warning.message}`));
 }
 
 function parseAssignments(assignments) {

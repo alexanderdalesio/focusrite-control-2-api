@@ -141,7 +141,8 @@ function formatValue(name, value) {
 }
 
 function createControl(name, definition, group) {
-  const displayLabel = displayControlLabel(group, definition.label);
+  const labelText = displayControlLabel(group, definition.label);
+  const displayLabel = definition.experimental ? `${labelText} (experimental)` : labelText;
   if (definition.kind === 'boolean' || definition.kind === 'mute') {
     const row = document.createElement('div');
     row.className = 'switchrow';
@@ -255,8 +256,8 @@ function buildControls() {
 function renderControls() {
   const blocked = (name) => {
     const definition = definitions[name];
-    return definition?.access === 'read-only'
-      || (definition?.disabledWhen && values[definition.disabledWhen.control] === definition.disabledWhen.value);
+    return Boolean(definition?.access === 'read-only'
+      || (definition?.disabledWhen && values[definition.disabledWhen.control] === definition.disabledWhen.value));
   };
   $$('[data-toggle]').forEach((button) => {
     const name = button.dataset.toggle;
@@ -265,7 +266,7 @@ function renderControls() {
     button.setAttribute('aria-pressed', String(value === true));
     button.textContent = value === true ? 'ON' : 'OFF';
     button.disabled = busy || value === undefined || blocked(name);
-    button.title = blocked(name) ? definitions[name].disabledReason || 'Read-only control' : '';
+    button.title = blocked(name) ? definitions[name].disabledReason || 'Read-only control' : definitions[name]?.description || '';
   });
   $$('[data-knob]').forEach((knob) => {
     const name = knob.dataset.knob;
@@ -274,13 +275,13 @@ function renderControls() {
     const output = $(`[data-value="${name}"]`);
     if (output && Number.isFinite(value) && !knob.classList.contains('dragging')) output.textContent = formatValue(name, value);
     knob.disabled = busy || !Number.isFinite(value) || blocked(name);
-    knob.title = blocked(name) ? definitions[name].disabledReason || 'Read-only control' : '';
+    knob.title = blocked(name) ? definitions[name].disabledReason || 'Read-only control' : definitions[name]?.description || '';
   });
   $$('[data-enum]').forEach((select) => {
     const name = select.dataset.enum;
     if (values[name] !== undefined && document.activeElement !== select) select.value = values[name];
     select.disabled = busy || values[name] === undefined || blocked(name);
-    select.title = blocked(name) ? definitions[name].disabledReason || 'Read-only control' : '';
+    select.title = blocked(name) ? definitions[name].disabledReason || 'Read-only control' : definitions[name]?.description || '';
   });
 }
 
@@ -323,7 +324,8 @@ async function setControl(name, value) {
   try {
     const result = await api(`/api/v1/control/${encodeURIComponent(name)}/set`, { method: 'POST', body: JSON.stringify({ value }) });
     values[result.control] = result.value;
-    showMessage(`${definitions[result.control]?.label ?? result.control} set to ${formatValue(result.control, result.value)}.`, 'good');
+    const warning = (result.warnings ?? []).map((item) => item.message).join(' ');
+    showMessage(`${definitions[result.control]?.label ?? result.control} set to ${formatValue(result.control, result.value)}.${warning ? ` ${warning}` : ''}`, warning ? 'warn' : 'good');
   } catch (error) {
     values[name] = previous;
     showMessage(error.message, 'bad');
@@ -342,7 +344,8 @@ function bindControlEvents() {
     try {
       const result = await api(`/api/v1/control/${encodeURIComponent(name)}/toggle`);
       values[result.control] = result.value;
-      showMessage(`${definitions[result.control]?.label ?? result.control} ${result.value ? 'enabled' : 'disabled'}.`, 'good');
+      const warning = (result.warnings ?? []).map((item) => item.message).join(' ');
+      showMessage(`${definitions[result.control]?.label ?? result.control} ${result.value ? 'enabled' : 'disabled'}.${warning ? ` ${warning}` : ''}`, warning ? 'warn' : 'good');
     } catch (error) { showMessage(error.message, 'bad'); }
     finally { busy = false; renderControls(); }
   }));

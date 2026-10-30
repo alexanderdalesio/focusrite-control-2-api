@@ -71,12 +71,42 @@ test('firmware-rejected optional switches are disabled and explain their read-on
   const button = new Element();
   button.dataset.toggle = 'metering-enabled';
   const context = {
-    definitions: { 'metering-enabled': { access: 'read-only', disabledReason: 'Device rejected notification 20.' } },
+    definitions: { 'metering-enabled': { access: 'read-only', disabledReason: 'Device rejected notification 27.' } },
     values: { 'metering-enabled': false }, busy: false,
     $$: (selector) => selector === '[data-toggle]' ? [button] : [],
   };
   vm.createContext(context);
   vm.runInContext(`${renderFunction}\nrenderControls()`, context);
   assert.equal(button.disabled, true);
-  assert.equal(button.title, 'Device rejected notification 20.');
+  assert.equal(button.title, 'Device rejected notification 27.');
+});
+
+test('experimental controls stay usable and show their verification limits', () => {
+  const button = new Element();
+  button.dataset.toggle = 'autogain-use-peak';
+  const context = {
+    definitions: { 'autogain-use-peak': { experimental: true, description: 'DSP effect not validated.' } },
+    values: { 'autogain-use-peak': false }, busy: false,
+    $$: (selector) => selector === '[data-toggle]' ? [button] : [],
+  };
+  vm.createContext(context);
+  vm.runInContext(`${renderFunction}\nrenderControls()`, context);
+  assert.equal(button.disabled, false);
+  assert.equal(button.title, 'DSP effect not validated.');
+});
+
+test('setting warnings remain visible without undoing a verified value', async () => {
+  const setter = source.slice(source.indexOf('async function setControl('), source.indexOf('function bindControlEvents('));
+  const messages = [];
+  const context = {
+    values: { 'autogain-maximum-gain': 52 }, definitions: {}, controlRevision: 0, busy: false,
+    renderControls() {}, formatValue: (_name, value) => String(value),
+    showMessage: (message, kind) => messages.push({ message, kind }),
+    api: async () => ({ control: 'autogain-maximum-gain', value: 51, warnings: [{ message: 'DSP effect remains experimental.' }] }),
+  };
+  vm.createContext(context);
+  await vm.runInContext(`${setter}\nsetControl('autogain-maximum-gain', 51)`, context);
+  assert.equal(context.values['autogain-maximum-gain'], 51);
+  assert.equal(messages[0].kind, 'warn');
+  assert.match(messages[0].message, /experimental/);
 });

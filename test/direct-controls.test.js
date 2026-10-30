@@ -101,3 +101,9 @@ test('filters malformed controls and adapts ranges to the live device map', () =
     { control: 'input2-air', reason: 'inputAir index 5 is outside dimension 2.' },
   ]);
 });
+
+test('a legacy metering flag alone is not advertised as a front-panel control', () => {
+  const deviceMap = structuredClone(map);
+  deviceMap.structs.APP_SPACE.members.meteringEnabled = { type: 'uint8', offset: 29, size: 1, 'notify-device': 20 };
+  assert.equal(buildDirectControlDefinitions(deviceMap)['metering-enabled'], undefined);
+});

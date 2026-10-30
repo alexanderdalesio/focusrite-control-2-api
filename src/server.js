@@ -146,7 +146,7 @@ async function executeAction(rawName, rawAction, suppliedValue) {
     : { control: rawName, value: action === 'set' ? suppliedValue : rawAction };
   const result = await activeClient.apply([operation]);
   const name = Object.keys(result.values)[0];
-  return { ok: true, control: name, value: result.values[name] };
+  return { ok: true, control: name, value: result.values[name], ...(result.warnings?.length ? { warnings: result.warnings } : {}) };
 }
 
 function beginPairing() {

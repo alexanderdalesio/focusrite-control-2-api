@@ -494,6 +494,10 @@ export class DirectFocusriteClient {
     await this.readDeviceMap();
     const definitions = publicDirectControlDefinitions(this.controls);
     for (const [name, item] of Object.entries(this.controls)) {
+      if (item.optionalNotification && item.access !== 'read-only') {
+        try { this.#notificationFor(item); }
+        catch (error) { definitions[name] = { ...definitions[name], access: 'read-only', disabledReason: error.message }; }
+      }
       if (!item.probeNotification || item.access === 'read-only') continue;
       const event = this.#notificationFor(item);
       const capability = this.notificationCapabilities.get(name);
@@ -513,6 +517,13 @@ export class DirectFocusriteClient {
     const { member } = resolveMemberElement(this.deviceMap, item.path, item.index);
     const event = Number(item.notify ?? member['notify-device'] ?? (item.save ? 6 : 0));
     if (!Number.isInteger(event) || event < 0 || event > 0xffffffff) throw new RangeError(`Invalid notification for ${item.path}.`);
+    if (item.optionalNotification) {
+      const enumerators = this.deviceMap.enums?.eDEV_FCP_USER_MESSAGE_TYPE?.enumerators ?? {};
+      const matches = Object.values(enumerators).filter((candidate) => candidate === event).length;
+      if (!event || enumerators[item.optionalNotification] !== event || matches !== 1) {
+        throw new Error(`${item.path}: notification metadata does not identify the expected configuration event. No setting was written.`);
+      }
+    }
     return event;
   }
 
@@ -564,17 +575,22 @@ export class DirectFocusriteClient {
     const member = resolveMemberElement(this.deviceMap, item.path, item.index);
     const range = member.member.range;
     if (range && (value < range.min || value > range.max)) throw new RangeError(`${name} is outside the device range ${range.min} to ${range.max}.`);
-    await this.transport.writeData(member.offset, encodePrimitive(member.type, item.kind === 'boolean' ? Number(value) : value));
     const notification = this.#notificationFor(item);
+    await this.transport.writeData(member.offset, encodePrimitive(member.type, item.kind === 'boolean' ? Number(value) : value));
     if (notification) {
       try { await this.transport.notify(notification); }
       catch (error) {
-        const enumerators = this.deviceMap.enums?.eDEV_FCP_USER_MESSAGE_TYPE?.enumerators ?? {};
-        const declared = enumerators[item.optionalNotification];
-        const matches = Object.values(enumerators).filter((event) => event === notification).length;
-        // FC2 keeps these target writes when their notification returns 7. apply() still verifies the stored value.
-        if (!item.optionalNotification || declared !== notification || matches !== 1 || !(error instanceof FcpDeviceError)
+        // FC2's AppSpace adapter discards notification status. Only these named configuration fields use that policy.
+        if (!item.optionalNotification || !(error instanceof FcpDeviceError)
           || error.opcode !== OPCODE.dataNotify || error.code !== 7) throw error;
+        return {
+          control: name,
+          code: 'notification-rejected',
+          event: notification,
+          status: error.code,
+          verification: 'stored-value',
+          message: `${name}: notification ${notification} returned status ${error.code}; the stored value was verified.${item.experimental ? ' Its DSP effect remains experimental.' : ''}`,
+        };
       }
     }
   }
@@ -609,6 +625,7 @@ export class DirectFocusriteClient {
       for (const operation of operations) {
         const control = normalizeDirectControlName(this.controls, operation.control);
         const item = this.controls[control];
+        if (item.optionalNotification) this.#notificationFor(item);
         if (item.probeNotification) {
           const event = this.#notificationFor(item);
           const capability = this.notificationCapabilities.get(control);
@@ -638,10 +655,18 @@ export class DirectFocusriteClient {
         }
       }
       const attempted = [];
+      const warnings = [];
       try {
         for (const { control, value } of normalized) {
           attempted.push(control);
-          await this.#writeControl(control, value);
+          const warning = await this.#writeControl(control, value);
+          if (warning) warnings.push(warning);
+          else if (this.controls[control].experimental) warnings.push({
+            control,
+            code: 'experimental-control',
+            verification: 'stored-value',
+            message: `${control}: the stored value was verified; its DSP effect remains experimental.`,
+          });
         }
         const values = {};
         for (const [control, value] of planned) {
@@ -650,7 +675,7 @@ export class DirectFocusriteClient {
           const expected = item.kind === 'enum' ? item.values[value] : value;
           if (values[control] !== expected) throw new Error(`${control} verification failed: requested ${expected}, received ${values[control]}.`);
         }
-        return { applied: normalized.length, values };
+        return { applied: normalized.length, values, ...(warnings.length ? { warnings } : {}) };
       } catch (error) {
         const rollbackErrors = [];
         for (const control of [...new Set(attempted)].reverse()) {

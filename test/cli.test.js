@@ -72,7 +72,7 @@ test('control lists clearly label firmware-rejected read-only settings', async (
     response.setHeader('Content-Type', 'application/json');
     const value = request.url === '/api/v1/health'
       ? { ok: true, api: version, backend: 'fc2' }
-      : { controls: { 'metering-enabled': { kind: 'boolean', label: 'Device-map metering flag', access: 'read-only' } } };
+      : { controls: { 'metering-enabled': { kind: 'boolean', label: 'Front-panel meter feed', access: 'read-only' } } };
     response.end(JSON.stringify(value));
   });
   await new Promise((resolve, reject) => {
@@ -83,5 +83,31 @@ test('control lists clearly label firmware-rejected read-only settings', async (
   const { stdout } = await run(process.execPath, [cli, 'list'], {
     env: { ...process.env, NO_COLOR: '1', FOCUSRITE_DATA_DIR: dataDirectory, FOCUSRITE_API_URL: `http://127.0.0.1:${server.address().port}` },
   });
-  assert.match(stdout, /metering-enabled\s+boolean\s+Device-map metering flag · read-only/);
+  assert.match(stdout, /metering-enabled\s+boolean\s+Front-panel meter feed · read-only/);
+});
+
+test('setting warnings are readable in text mode and structured in JSON mode', async (t) => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), 'focusrite-warning-test-'));
+  t.after(() => rm(dataDirectory, { recursive: true, force: true }));
+  const version = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version;
+  const warning = { control: 'autogain-use-peak', code: 'notification-rejected', status: 7, verification: 'stored-value', message: 'Stored value verified; DSP effect remains experimental.' };
+  const server = http.createServer((request, response) => {
+    response.setHeader('Content-Type', 'application/json');
+    response.end(JSON.stringify(request.url === '/api/v1/health'
+      ? { ok: true, api: version, backend: 'fc2' }
+      : { ok: true, applied: 1, values: { 'autogain-use-peak': true }, warnings: [warning] }));
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const env = { ...process.env, NO_COLOR: '1', FOCUSRITE_DATA_DIR: dataDirectory, FOCUSRITE_API_URL: `http://127.0.0.1:${server.address().port}` };
+  const plain = await run(process.execPath, [cli, 'set', 'autogain-use-peak', 'on'], { env });
+  assert.match(plain.stdout, /autogain-use-peak\s+on/);
+  assert.match(plain.stderr, /Warning: Stored value verified; DSP effect remains experimental/);
+  assert.doesNotMatch(plain.stderr, /\u001b\[/);
+  const json = await run(process.execPath, [cli, 'set', 'autogain-use-peak', 'on', '--json'], { env });
+  assert.deepEqual(JSON.parse(json.stdout).warnings, [warning]);
+  assert.equal(json.stderr, '');
 });

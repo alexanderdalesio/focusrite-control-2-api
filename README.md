@@ -34,7 +34,7 @@ Homebrew installs the `focusrite` command and its Node.js runtime dependency. Up
 
 Firmware update, flash erase/write, reboot, DFU, and factory-test commands are deliberately not implemented.
 
-Auto Gain target writes follow FC2's behavior on firmware v4.0.2827: the mean/peak values are verified even when their notifications return status 7. Peak-mode, maximum-gain, and the device-map metering flag remain read-only when their notifications are rejected; their hardware effect has not been verified. Support is rechecked on reconnect rather than using a firmware blacklist. USB meter reads work independently of that flag. Individual output levels follow their hardware-control switches; use the master monitor level or select software control before changing them independently.
+Auto Gain configuration writes are readback-verified even when their correctly identified notifications return status 7, following FC2's generic setting-write behavior. Results expose that status as a warning rather than silently discarding it. The undocumented peak-mode and maximum-gain settings are marked **experimental**: their stored values and capture compatibility are tested, not their effect on calibrated audio. Front-panel metering uses the separate ESP32 meter-feed field; USB meter reads work independently. Individual output levels follow their hardware-control switches; use the master monitor level or select software control before changing them independently.
 
 For FC2's −12 dB Auto Gain target, set both target fields (positive dB below full scale):
 
@@ -42,6 +42,8 @@ For FC2's −12 dB Auto Gain target, set both target fields (positive dB below f
 focusrite batch autogain-mean-target=12 autogain-peak-target=6
 focusrite set input1-auto-gain on     # Start capture; no test audio is generated
 focusrite set input1-auto-gain off    # Cancel an active capture
+focusrite set metering-enabled off   # Stop the front-panel meter feed
+focusrite set metering-enabled on    # Restore the feed; USB peak reads are independent
 ```
 
 FC2's −6/−12/−18 dB choices correspond to mean/peak pairs `6/0`, `12/6`, and `18/12`. Auto Gain can change preamp gain using the incoming signal; it does not generate that signal.
