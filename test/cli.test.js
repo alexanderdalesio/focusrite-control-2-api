@@ -14,6 +14,7 @@ const cli = join(root, 'bin', 'focusrite.js');
 test('help groups commands and stays plain when redirected', async () => {
   const { stdout } = await run(process.execPath, [cli, 'help']);
   for (const heading of ['Control', 'Connection', 'Maintenance', 'Direct USB', 'Examples']) assert.match(stdout, new RegExp(`^${heading}$`, 'm'));
+  assert.match(stdout, /service\s+install\|start\|stop\|restart\|status\|uninstall/);
   assert.doesNotMatch(stdout, /\u001b\[/);
 });
 

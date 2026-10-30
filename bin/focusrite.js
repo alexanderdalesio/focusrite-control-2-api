@@ -55,7 +55,7 @@ ${style.heading('Maintenance')}
   ${style.command('focusrite config show')}
   ${style.command('focusrite config set')} KEY VALUE
   ${style.command('focusrite api')}
-  ${style.command('focusrite service')} install|start|restart|status|uninstall
+  ${style.command('focusrite service')} install|start|stop|restart|status|uninstall
 
 ${style.heading('Direct USB')}
   ${style.command('focusrite usb')} list|status|device|doctor
@@ -391,6 +391,20 @@ async function runService(action = 'status', { quiet = false } = {}) {
   const plist = join(directory, `${label}.plist`);
   const log = join(APP_DIRECTORY, 'service.log');
 
+  const bootstrap = async () => {
+    let lastError;
+    for (const delay of [0, 150, 500]) {
+      if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+      try {
+        await execFileAsync('launchctl', ['bootstrap', domain, plist]);
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError;
+  };
+
   if (action === 'install') {
     await mkdir(directory, { recursive: true });
     await mkdir(APP_DIRECTORY, { recursive: true, mode: 0o700 });
@@ -404,7 +418,7 @@ async function runService(action = 'status', { quiet = false } = {}) {
 <key>StandardOutPath</key><string>${log}</string><key>StandardErrorPath</key><string>${log}</string>
 </dict></plist>\n`);
     try { await execFileAsync('launchctl', ['bootout', target]); } catch {}
-    await execFileAsync('launchctl', ['bootstrap', domain, plist]);
+    await bootstrap();
     if (!quiet) console.log(style.success('Installed and started the Focusrite API login service.'));
     return;
   }
@@ -415,8 +429,22 @@ async function runService(action = 'status', { quiet = false } = {}) {
     return;
   }
   if (action === 'start' || action === 'restart') {
-    await execFileAsync('launchctl', ['kickstart', '-k', target]);
+    try {
+      await execFileAsync('launchctl', ['kickstart', '-k', target]);
+    } catch (error) {
+      if (!existsSync(plist)) throw new Error('The Focusrite API service is not installed. Run "focusrite service install" first.', { cause: error });
+      await bootstrap();
+    }
     if (!quiet) console.log(style.success('Focusrite API service started.'));
+    return;
+  }
+  if (action === 'stop') {
+    try {
+      await execFileAsync('launchctl', ['bootout', target]);
+      if (!quiet) console.log(style.success('Focusrite API service stopped.'));
+    } catch {
+      if (!quiet) console.log(style.warning(existsSync(plist) ? 'The Focusrite API service is already stopped.' : 'The Focusrite API service is not installed.'));
+    }
     return;
   }
   if (action === 'status') {
@@ -427,7 +455,7 @@ async function runService(action = 'status', { quiet = false } = {}) {
     } catch { console.log(style.warning('The Focusrite API service is not installed.')); }
     return;
   }
-  throw new Error('Use service install, start, restart, status, or uninstall.');
+  throw new Error('Use service install, start, stop, restart, status, or uninstall.');
 }
 
 async function openDashboard(url) {

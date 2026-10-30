@@ -112,6 +112,8 @@ On macOS, the optional managed service provides:
 
 ```bash
 focusrite service status
+focusrite service stop
+focusrite service start
 focusrite service restart
 focusrite logs 200
 ```

@@ -7,6 +7,7 @@
 - Limited synthesized mute, hardware-control, and mono controls to their live array dimensions.
 - Isolated unreadable controls during full-state refreshes so one changed firmware field cannot take down the dashboard or API.
 - Added compatibility warnings for skipped controls and verified direct USB operation on Scarlett firmware v4.0.2827.0.
+- Added `focusrite service stop` and made `service start` recover a stopped-but-installed LaunchAgent reliably.
 
 ## 0.3.1 - 2026-09-08
 

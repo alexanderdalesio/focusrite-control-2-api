@@ -128,6 +128,8 @@ focusrite device               # connected device and firmware
 focusrite doctor               # readable connection checks
 focusrite reconnect            # rebuild the selected transport
 focusrite list                 # controls available through the selected method
+focusrite service stop         # release USB and stop the managed API service
+focusrite service start        # load the managed API service again
 ```
 
 Direct USB tools expose routing, mixer, meters, and device-map diagnostics:
